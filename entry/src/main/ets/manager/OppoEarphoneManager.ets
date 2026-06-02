@@ -483,121 +483,101 @@ export class OppoEarphoneManager {
 
 
   /**
-
-   * 解析 OPPO 耳机电量数据
-
-   * 核心通用解析算法，对所有同型号耳机 100% 适用
-
-   *
-
-   * 数据格式说明:
-
-   * - 左耳标识: data[i] === 0x01，前置字节为 0x03 或 0x04
-
-   * - 右耳标识: data[i] === 0x02，前置字节为 0x64 或 0xE4 或 0x04
-
-   * - 充电仓标识: data[i] === 0x03，前置字节为 0x64 或 0xE4 或 0x04
-
-   * - 电量值: data[i+1]，若 > 100 则表示正在充电，实际电量 = rawVal - 0x80
-
+   * 核心逆向算法最新升级版（完美兼容 70% 等非满电状态及复杂前置序列）
    */
-
   private parseOppoBattery(data: Uint8Array): void {
-
     let updated = false;
 
+    // 健壮性检查
+    if (data.length < 5 || data[0] !== 0xAA) return;
 
+    for (let i = 1; i < data.length - 1; i++) {
+      let deviceType = data[i];
+      let rawVal = data[i + 1];
 
-    for (let i = 0; i < data.length - 1; i++) {
+      // === 1. 解析左耳 (0x01) ===
+      if (deviceType === 0x01) {
+        // 规避前置引导序列（如果 0x01 后面紧跟的是 0x03 类似的分发码，说明它不是电量值，跳过）
+        if (rawVal === 0x03 || rawVal === 0x04) {
+          continue;
+        }
 
-      // 解析左耳电量
+        // 处理离线/仓外拿走标记
+        if (rawVal === 0x00 || rawVal === 0x05) {
+          if (this.batteryInfo.leftBattery !== -1) {
+            this.batteryInfo.leftBattery = -1; // 界面置为未知/离线
+            this.batteryInfo.leftCharging = false;
+            updated = true;
+          }
+          continue;
+        }
 
-      if (data[i] === 0x01 && i > 0 && (data[i - 1] === 0x03 || data[i - 1] === 0x04)) {
-
-        let rawVal = data[i + 1];
-
+        // 正常电量解析
         let charging = rawVal > 100;
-
         let battery = charging ? rawVal - 0x80 : rawVal;
-
         if (battery >= 0 && battery <= 100) {
-
           this.batteryInfo.leftBattery = battery;
-
           this.batteryInfo.leftCharging = charging;
-
-          console.info(`[OppoManager] 左耳电量: ${battery}%${charging ? ' (充电中)' : ''}`);
-
+          console.info(`[OppoManager] 动态捕获 L 耳电量: ${battery}% ${charging ? '(在仓充电)' : '(仓外使用)'}`);
           updated = true;
-
         }
-
       }
 
+      // === 2. 解析右耳 (0x02) ===
+      if (deviceType === 0x02) {
+        if (rawVal === 0x03 || rawVal === 0x04) {
+          continue;
+        }
 
-
-      // 解析右耳电量
-
-      if (data[i] === 0x02 && i > 0 && (data[i - 1] === 0x64 || data[i - 1] === 0xE4 || data[i - 1] === 0x04)) {
-
-        let rawVal = data[i + 1];
+        if (rawVal === 0x00 || rawVal === 0x05) {
+          if (this.batteryInfo.rightBattery !== -1) {
+            this.batteryInfo.rightBattery = -1;
+            this.batteryInfo.rightCharging = false;
+            updated = true;
+          }
+          continue;
+        }
 
         let charging = rawVal > 100;
-
         let battery = charging ? rawVal - 0x80 : rawVal;
-
         if (battery >= 0 && battery <= 100) {
-
           this.batteryInfo.rightBattery = battery;
-
           this.batteryInfo.rightCharging = charging;
-
-          console.info(`[OppoManager] 右耳电量: ${battery}%${charging ? ' (充电中)' : ''}`);
-
+          console.info(`[OppoManager] 动态捕获 R 耳电量: ${battery}% ${charging ? '(在仓充电)' : '(仓外使用)'}`);
           updated = true;
-
         }
-
       }
 
+      // === 3. 解析充电仓 (0x03) ===
+      if (deviceType === 0x03) {
+        if (rawVal === 0x04) {
+          continue; // 跳过索引包中的握手码
+        }
 
+        if (rawVal === 0x00) {
+          if (this.batteryInfo.caseBattery !== -1) {
+            this.batteryInfo.caseBattery = -1;
+            this.batteryInfo.caseCharging = false;
+            updated = true;
+          }
+          continue;
+        }
 
-      // 解析充电仓电量
-
-      if (data[i] === 0x03 && i > 0 && (data[i - 1] === 0x64 || data[i - 1] === 0xE4 || data[i - 1] === 0x04)) {
-
-        let rawVal = data[i + 1];
-
-        let charging = rawVal > 100;
-
+        let charging = rawVal > 128; // 预留充电仓插线充电的可能（最高位拉高）
         let battery = charging ? rawVal - 0x80 : rawVal;
-
         if (battery >= 0 && battery <= 100) {
-
           this.batteryInfo.caseBattery = battery;
-
           this.batteryInfo.caseCharging = charging;
-
-          console.info(`[OppoManager] 充电仓电量: ${battery}%${charging ? ' (充电中)' : ''}`);
-
+          console.info(`[OppoManager] 动态捕获 充电仓电量: ${battery}% ${charging ? '(充电仓充电中)' : ''}`);
           updated = true;
-
         }
-
       }
-
     }
-
-
 
     // 有更新时通知 UI
-
     if (updated) {
-
       this.notifyBatteryUpdate();
-
     }
-
   }
 
 
