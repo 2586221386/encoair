@@ -1,4 +1,4 @@
-import { OppoEarphoneManager, BatteryInfo, ConnectionStatus } from '../manager/OppoEarphoneManager';
+import { OppoEarphoneManager, BatteryInfo, ConnectionStatus, WearState, WearStatus, getAncModeName } from '../manager/OppoEarphoneManager';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 
@@ -113,6 +113,14 @@ struct Index {
   // HEX原始数据展示
   @State rawHexLog: string = '';
   @State showRawData: boolean = false;
+  // ANC模式
+  @State ancMode: number = 1;
+  // 佩戴状态
+  @State leftWear: WearState = WearState.DISCONNECTED;
+  @State rightWear: WearState = WearState.DISCONNECTED;
+  @State caseWear: WearState = WearState.DISCONNECTED;
+  // 游戏模式
+  @State gameModeEnabled: boolean = false;
 
   private manager: OppoEarphoneManager = new OppoEarphoneManager();
 
@@ -154,6 +162,23 @@ struct Index {
           lines = lines.slice(lines.length - 20);
         }
         this.rawHexLog = lines.join('\n');
+      },
+      (mode: number) => {
+        // ANC 模式更新
+        this.ancMode = mode;
+        console.info(`[Index] ANC模式: ${getAncModeName(mode)}`);
+      },
+      (wear: WearStatus) => {
+        // 佩戴状态更新
+        this.leftWear = wear.left;
+        this.rightWear = wear.right;
+        this.caseWear = wear.case;
+        console.info(`[Index] 佩戴状态: L=${wear.left}, R=${wear.right}, C=${wear.case}`);
+      },
+      (enabled: boolean) => {
+        // 游戏模式更新
+        this.gameModeEnabled = enabled;
+        console.info(`[Index] 游戏模式: ${enabled ? '开启' : '关闭'}`);
       }
     );
   }
@@ -240,6 +265,9 @@ struct Index {
 
       // 电量卡片区域
       this.BatterySection();
+
+      // 设备状态区域 (ANC/佩戴/游戏模式)
+      this.DeviceStatusSection();
 
       // 操作按钮区域
       this.ActionSection();
@@ -448,6 +476,338 @@ struct Index {
     .border({ width: 1, color: '#2A2A5E' })
     .margin({ top: 20 })
     .clip(true)
+  }
+
+  // ============== 设备状态区域 ==============
+  @Builder DeviceStatusSection() {
+    Column() {
+      // ANC 标题
+      Row() {
+        Text('🎵')
+          .fontSize(18)
+        Text(' ANC 模式')
+          .fontSize(14)
+          .fontColor('#AAAACC')
+          .margin({ left: 6 })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+
+      // ANC 三个按键（降噪、关闭、通透）
+      if (this.connectionStatus === 'subscribed') {
+        Row() {
+          // 降噪按钮
+          Column() {
+            Button('降噪')
+              .fontSize(15)
+              .fontWeight(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? FontWeight.Bold : FontWeight.Medium)
+              .fontColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#FFFFFF' : '#AAAACC')
+              .width('90%')
+              .height(45)
+              .backgroundColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#2A5CFF' : '#1E1E3E')
+              .borderRadius(12)
+              .border({
+                width: 1,
+                color: this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#4A7CFF' : '#2A2A5E'
+              })
+              .shadow({ radius: 10, color: this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? 8 : 0, offsetY: this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? 8 : 0 })
+              .onClick(() => {
+                this.manager.setAncMode(2);
+              })
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Center)
+
+          // 关闭按钮
+          Column() {
+            Button('关闭')
+              .fontSize(15)
+              .fontWeight(this.ancMode === 1 ? FontWeight.Bold : FontWeight.Medium)
+              .fontColor(this.ancMode === 1 ? '#FFFFFF' : '#AAAACC')
+              .width('90%')
+              .height(45)
+              .backgroundColor(this.ancMode === 1 ? '#2A5CFF' : '#1E1E3E')
+              .borderRadius(12)
+              .border({
+                width: 1,
+                color: this.ancMode === 1 ? '#4A7CFF' : '#2A2A5E'
+              })
+              .shadow({ radius: 10, color: this.ancMode === 1 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 1 ? 8 : 0, offsetY: this.ancMode === 1 ? 8 : 0 })
+              .onClick(() => {
+                this.manager.setAncMode(1);
+              })
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Center)
+
+          // 通透按钮
+          Column() {
+            Button('通透')
+              .fontSize(15)
+              .fontWeight(this.ancMode === 3 ? FontWeight.Bold : FontWeight.Medium)
+              .fontColor(this.ancMode === 3 ? '#FFFFFF' : '#AAAACC')
+              .width('90%')
+              .height(45)
+              .backgroundColor(this.ancMode === 3 ? '#2A5CFF' : '#1E1E3E')
+              .borderRadius(12)
+              .border({
+                width: 1,
+                color: this.ancMode === 3 ? '#4A7CFF' : '#2A2A5E'
+              })
+              .shadow({ radius: 10, color: this.ancMode === 3 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 3 ? 8 : 0, offsetY: this.ancMode === 3 ? 8 : 0 })
+              .onClick(() => {
+                this.manager.setAncMode(3);
+              })
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Center)
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 4, bottom: 4 })
+
+        // 降噪子模式选择（智能/轻度/中度/深度）
+        if (this.isNoiseCancellationMode()) {
+          Row() {
+            // 智能降噪按钮
+            Column() {
+              Button('智能')
+                .fontSize(13)
+                .fontWeight(this.ancMode === 5 ? FontWeight.Bold : FontWeight.Medium)
+                .fontColor(this.ancMode === 5 ? '#FFFFFF' : '#8888AA')
+                .width('90%')
+                .height(36)
+                .backgroundColor(this.ancMode === 5 ? '#2A5CFF' : '#1A1A3E')
+                .borderRadius(10)
+                .border({
+                  width: 1,
+                  color: this.ancMode === 5 ? '#4A7CFF' : '#2A2A5E'
+                })
+                .shadow({ radius: 6, color: this.ancMode === 5 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 5 ? 4 : 0, offsetY: this.ancMode === 5 ? 4 : 0 })
+                .onClick(() => {
+                  this.manager.setAncMode(5);
+                })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Center)
+
+            // 轻度降噪按钮
+            Column() {
+              Button('轻度')
+                .fontSize(13)
+                .fontWeight(this.ancMode === 6 ? FontWeight.Bold : FontWeight.Medium)
+                .fontColor(this.ancMode === 6 ? '#FFFFFF' : '#8888AA')
+                .width('90%')
+                .height(36)
+                .backgroundColor(this.ancMode === 6 ? '#2A5CFF' : '#1A1A3E')
+                .borderRadius(10)
+                .border({
+                  width: 1,
+                  color: this.ancMode === 6 ? '#4A7CFF' : '#2A2A5E'
+                })
+                .shadow({ radius: 6, color: this.ancMode === 6 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 6 ? 4 : 0, offsetY: this.ancMode === 6 ? 4 : 0 })
+                .onClick(() => {
+                  this.manager.setAncMode(6);
+                })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Center)
+
+            // 中度降噪按钮
+            Column() {
+              Button('中度')
+                .fontSize(13)
+                .fontWeight(this.ancMode === 7 ? FontWeight.Bold : FontWeight.Medium)
+                .fontColor(this.ancMode === 7 ? '#FFFFFF' : '#8888AA')
+                .width('90%')
+                .height(36)
+                .backgroundColor(this.ancMode === 7 ? '#2A5CFF' : '#1A1A3E')
+                .borderRadius(10)
+                .border({
+                  width: 1,
+                  color: this.ancMode === 7 ? '#4A7CFF' : '#2A2A5E'
+                })
+                .shadow({ radius: 6, color: this.ancMode === 7 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 7 ? 4 : 0, offsetY: this.ancMode === 7 ? 4 : 0 })
+                .onClick(() => {
+                  this.manager.setAncMode(7);
+                })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Center)
+
+            // 深度降噪按钮
+            Column() {
+              Button('深度')
+                .fontSize(13)
+                .fontWeight(this.ancMode === 8 ? FontWeight.Bold : FontWeight.Medium)
+                .fontColor(this.ancMode === 8 ? '#FFFFFF' : '#8888AA')
+                .width('90%')
+                .height(36)
+                .backgroundColor(this.ancMode === 8 ? '#2A5CFF' : '#1A1A3E')
+                .borderRadius(10)
+                .border({
+                  width: 1,
+                  color: this.ancMode === 8 ? '#4A7CFF' : '#2A2A5E'
+                })
+                .shadow({ radius: 6, color: this.ancMode === 8 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 8 ? 4 : 0, offsetY: this.ancMode === 8 ? 4 : 0 })
+                .onClick(() => {
+                  this.manager.setAncMode(8);
+                })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Center)
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 8, bottom: 4 })
+        }
+      } else {
+        Text('--')
+          .fontSize(14)
+          .fontColor('#666688')
+          .width('100%')
+          .textAlign(TextAlign.Center)
+          .padding({ top: 20, bottom: 20 })
+      }
+
+      // 佩戴状态
+      Row() {
+        Text('👂')
+          .fontSize(18)
+        Text(' 佩戴状态')
+          .fontSize(14)
+          .fontColor('#AAAACC')
+          .margin({ left: 6 })
+
+        Blank()
+
+        if (this.connectionStatus === 'subscribed') {
+          Row() {
+            Text(`L:${this.getWearText(this.leftWear)}`)
+              .fontSize(12)
+              .fontColor(this.getWearColor(this.leftWear))
+            Text('  ')
+            Text(`R:${this.getWearText(this.rightWear)}`)
+              .fontSize(12)
+              .fontColor(this.getWearColor(this.rightWear))
+            Text('  ')
+            Text(`C:${this.getWearText(this.caseWear)}`)
+              .fontSize(12)
+              .fontColor(this.getWearColor(this.caseWear))
+          }
+        } else {
+          Text('--')
+            .fontSize(14)
+            .fontColor('#666688')
+        }
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 8, bottom: 12 })
+
+      // 游戏模式
+      Row() {
+        Text('🎮')
+          .fontSize(18)
+        Text(' 游戏模式')
+          .fontSize(14)
+          .fontColor('#AAAACC')
+          .margin({ left: 6 })
+
+        Blank()
+
+        if (this.connectionStatus === 'subscribed') {
+          Button(this.gameModeEnabled ? '已开启' : '已关闭')
+            .fontSize(13)
+            .height(32)
+            .backgroundColor(this.gameModeEnabled ? '#4CAF50' : '#666666')
+            .borderRadius(16)
+            .onClick(() => {
+              // 切换游戏模式
+              this.manager.setGameMode(!this.gameModeEnabled);
+            })
+        } else {
+          Text('--')
+            .fontSize(14)
+            .fontColor('#666688')
+        }
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 8, bottom: 12 })
+    }
+    .width('85%')
+    .borderRadius(16)
+    .backgroundColor('#12122E')
+    .border({ width: 1, color: '#2A2A5E' })
+    .margin({ top: 20 })
+  }
+
+  // ANC 单个按钮组件
+  @Builder AncButton(label: string, isSelected: boolean, onClick: () => void) {
+    Column() {
+      // 按钮容器
+      Button(label)
+        .fontSize(15)
+        .fontWeight(isSelected ? FontWeight.Bold : FontWeight.Medium)
+        .fontColor(isSelected ? '#FFFFFF' : '#AAAACC')
+        .width('90%')
+        .height(45)
+        .backgroundColor(isSelected ? '#2A5CFF' : '#1E1E3E')
+        .borderRadius(12)
+        .border({
+          width: 1,
+          color: isSelected ? '#4A7CFF' : '#2A2A5E'
+        })
+        .shadow({ radius: 10, color: isSelected ? '#4A7CFF' : '#00000000', offsetX: isSelected ? 8 : 0, offsetY: isSelected ? 8 : 0 })
+        .onClick(onClick)
+    }
+    .layoutWeight(1)
+    .alignItems(HorizontalAlign.Center)
+  }
+
+  // ANC 子模式按钮组件（智能/轻度/中度/深度）
+  @Builder AncSubButton(label: string, isSelected: boolean, onClick: () => void) {
+    Column() {
+      Button(label)
+        .fontSize(13)
+        .fontWeight(isSelected ? FontWeight.Bold : FontWeight.Medium)
+        .fontColor(isSelected ? '#FFFFFF' : '#8888AA')
+        .width('90%')
+        .height(36)
+        .backgroundColor(isSelected ? '#2A5CFF' : '#1A1A3E')
+        .borderRadius(10)
+        .border({
+          width: 1,
+          color: isSelected ? '#4A7CFF' : '#2A2A5E'
+        })
+        .shadow({ radius: 6, color: isSelected ? '#4A7CFF' : '#00000000', offsetX: isSelected ? 4 : 0, offsetY: isSelected ? 4 : 0 })
+        .onClick(onClick)
+    }
+    .layoutWeight(1)
+    .alignItems(HorizontalAlign.Center)
+  }
+
+  // 判断是否为降噪模式（包含所有降噪子模式）
+  isNoiseCancellationMode(): boolean {
+    return this.ancMode === 2 || this.ancMode === 5 || 
+           this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8;
+  }
+
+  // 佩戴状态文本
+  getWearText(state: WearState): string {
+    switch (state) {
+      case WearState.WEARING: return '佩戴';
+      case WearState.IN_CASE: return '在仓';
+      case WearState.REMOVED: return '取出';
+      default: return '断开';
+    }
+  }
+
+  // 佩戴状态颜色
+  getWearColor(state: WearState): string {
+    switch (state) {
+      case WearState.WEARING: return '#4CAF50';
+      case WearState.IN_CASE: return '#FFD700';
+      case WearState.REMOVED: return '#2196F3';
+      default: return '#666688';
+    }
   }
 
   // ============== 底部提示区域 ==============
