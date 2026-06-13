@@ -125,7 +125,6 @@ struct Index {
   private manager: OppoEarphoneManager = new OppoEarphoneManager();
 
   aboutToAppear(): void {
-    this.requestBluetoothPermission();
     this.manager.setCallbacks(
       (info: BatteryInfo) => {
         console.info(`[Index] 收到电量更新: 左=${info.leftBattery}, 右=${info.rightBattery}, 仓=${info.caseBattery}`);
@@ -181,6 +180,9 @@ struct Index {
         console.info(`[Index] 游戏模式: ${enabled ? '开启' : '关闭'}`);
       }
     );
+    
+    // 立即请求权限并开始监听
+    this.requestBluetoothPermissionAndStartMonitor();
   }
 
   aboutToDisappear(): void {
@@ -207,14 +209,38 @@ struct Index {
   }
 
   /**
+   * 请求蓝牙权限并立即开始监听
+   */
+  async requestBluetoothPermissionAndStartMonitor(): Promise<void> {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let atManager = abilityAccessCtrl.createAtManager();
+      let permissions: Array<Permissions> = ['ohos.permission.ACCESS_BLUETOOTH'];
+      let result = await atManager.requestPermissionsFromUser(context, permissions);
+      this.hasPermission = result.authResults[0] === 0;
+      
+      if (this.hasPermission) {
+        console.info('[Index] 蓝牙权限已获取，立即开始持续监听...');
+        // 权限获取成功后，立即启动持续监听模式
+        this.manager.startContinuousMonitor();
+      } else {
+        console.warn('[Index] 蓝牙权限被拒绝');
+      }
+    } catch (err) {
+      let error = err as BusinessError;
+      console.error(`[Index] 请求权限失败: ${error.message}`);
+    }
+  }
+
+  /**
    * 获取连接状态文本
    */
   getStatusText(): string {
     switch (this.connectionStatus) {
       case 'disconnected':
-        return '未连接';
+        return '正在监听蓝牙设备...';
       case 'scanning':
-        return '正在扫描...';
+        return '正在扫描OPPO耳机...';
       case 'connecting':
         return '正在连接...';
       case 'connected':
@@ -357,12 +383,12 @@ struct Index {
   @Builder ActionSection() {
     Column() {
       if (this.connectionStatus === 'disconnected') {
-        // 开始扫描按钮
+        // 未连接 - 显示重连按钮
         Button() {
           Row() {
-            Text('🔍')
+            Text('🔄')
               .fontSize(18)
-            Text('  开始扫描')
+            Text('  重新连接')
               .fontSize(18)
               .fontWeight(FontWeight.Medium)
           }
@@ -375,12 +401,7 @@ struct Index {
         .opacity(this.hasPermission ? 1.0 : 0.5)
         .onClick(() => {
           if (this.hasPermission) {
-            this.manager.startScan();
-            this.scanTipVisible = true;
-            // 5秒后隐藏扫描提示
-            setTimeout(() => {
-              this.scanTipVisible = false;
-            }, 5000);
+            this.manager.startAutoConnect();
           }
         })
       } else if (this.isBusy()) {
@@ -813,8 +834,8 @@ struct Index {
   // ============== 底部提示区域 ==============
   @Builder TipSection() {
     Column() {
-      if (this.scanTipVisible) {
-        Text('请确保耳机充电仓盖子已打开，且耳机在蓝牙范围内')
+      if (this.connectionStatus === 'disconnected' || this.connectionStatus === 'scanning') {
+        Text('已开启自动监听,检测到OPPO耳机会自动连接')
           .fontSize(12)
           .fontColor('#6666AA')
           .textAlign(TextAlign.Center)

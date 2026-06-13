@@ -15,6 +15,10 @@
     {
       "name": "bluetooth_permission_reason",
       "value": "用于扫描和连接OPPO蓝牙耳机，获取电量信息"
+    },
+    {
+      "name": "PopupAbility_label",
+      "value": "耳机电量弹窗"
     }
   ]
 }

@@ -148,7 +148,17 @@ export class OppoEarphoneManager {
 
   private isSubscribed: boolean = false;
 
-
+  // 自动连接相关
+  private savedMac: string = ''; // 保存上次成功连接的MAC地址
+  private autoReconnectTimer: number = -1;
+  private reconnectAttempts: number = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS: number = 5;
+  private readonly RECONNECT_DELAY_MS: number = 3000; // 重连延迟3秒
+  
+  // 持续监听相关
+  private continuousMonitorTimer: number = -1;
+  private readonly MONITOR_INTERVAL_MS: number = 5000; // 每5秒扫描一次
+  private isMonitorRunning: boolean = false;
 
   // 回调函数
 
@@ -226,7 +236,7 @@ export class OppoEarphoneManager {
    */
 
   setCallbacks(batteryCb: (info: BatteryInfo) => void, statusCb: (status: ConnectionStatus) => void, rawCb?: (hex: string) => void,
-               ancCb?: (mode: number) => void, wearCb?: (wear: WearStatus) => void, gameCb?: (enabled: boolean) => void): void {
+    ancCb?: (mode: number) => void, wearCb?: (wear: WearStatus) => void, gameCb?: (enabled: boolean) => void): void {
 
     this.batteryCallback = batteryCb;
 
@@ -242,6 +252,190 @@ export class OppoEarphoneManager {
 
   }
 
+
+  /**
+   * 启动持续监听模式(应用启动时调用)
+   * 持续扫描蓝牙设备,发现OPPO耳机立即连接
+   */
+  startContinuousMonitor(): void {
+    if (this.isMonitorRunning) {
+      console.info('[OppoManager] 监听已在运行中');
+      return;
+    }
+    
+    console.info('[OppoManager] 启动持续监听模式...');
+    this.isMonitorRunning = true;
+    
+    // 如果已有保存的设备,优先尝试连接
+    if (this.savedMac) {
+      console.info(`[OppoManager] 发现已保存设备,优先连接: ${this.savedMac}`);
+      this.connectToEarphone(this.savedMac);
+    }
+    
+    // 启动周期性扫描
+    this.startMonitorCycle();
+  }
+
+
+  /**
+   * 执行一次扫描周期
+   */
+  private startMonitorCycle(): void {
+    if (!this.isMonitorRunning) return;
+    
+    // 如果已连接,不需要扫描
+    if (this.connectedMac || this.isScanning) {
+      console.info('[OppoManager] 已连接或正在扫描,跳过本次扫描');
+      this.scheduleNextMonitorCycle();
+      return;
+    }
+    
+    console.info('[OppoManager] 开始监听扫描...');
+    this.notifyStatus('scanning');
+    
+    // 设置扫描超时(10秒后停止本次扫描)
+    const scanTimeout = setTimeout(() => {
+      if (this.isScanning) {
+        console.info('[OppoManager] 监听扫描超时,停止本次扫描');
+        this.stopScan();
+        this.notifyStatus('disconnected');
+      }
+    }, 10000);
+    
+    // 监听扫描结果
+    ble.on('BLEDeviceFind', (devices: Array<ble.ScanResult>) => {
+      for (let device of devices) {
+        let deviceName = device.deviceName;
+        let deviceMac = device.deviceId;
+
+        // 发现OPPO耳机立即连接
+        if (deviceName && deviceName.includes('OPPO Enco')) {
+          console.info(`[OppoManager] 监听到OPPO耳机! 名字: ${deviceName}, MAC: ${deviceMac}`);
+          clearTimeout(scanTimeout); // 取消超时定时器
+          this.stopScan();
+          this.connectToEarphone(deviceMac);
+          break;
+        }
+      }
+    });
+
+    // 启动扫描
+    try {
+      ble.startBLEScan(null, {
+        interval: 0,
+        dutyMode: ble.ScanDuty.SCAN_MODE_LOW_LATENCY,
+        matchMode: ble.MatchMode.MATCH_MODE_AGGRESSIVE
+      });
+      this.isScanning = true;
+    } catch (err) {
+      let error = err as BusinessError;
+      console.error(`[OppoManager] 监听扫描失败: ${error.message}`);
+      clearTimeout(scanTimeout);
+      this.isScanning = false;
+      this.notifyStatus('disconnected');
+      this.scheduleNextMonitorCycle();
+    }
+  }
+
+
+  /**
+   * 安排下一次扫描周期
+   */
+  private scheduleNextMonitorCycle(): void {
+    if (!this.isMonitorRunning) return;
+    
+    this.continuousMonitorTimer = setTimeout(() => {
+      this.startMonitorCycle();
+    }, this.MONITOR_INTERVAL_MS);
+  }
+
+
+  /**
+   * 停止持续监听
+   */
+  stopContinuousMonitor(): void {
+    this.isMonitorRunning = false;
+    if (this.continuousMonitorTimer !== -1) {
+      clearTimeout(this.continuousMonitorTimer);
+      this.continuousMonitorTimer = -1;
+    }
+    this.stopScan();
+    console.info('[OppoManager] 持续监听已停止');
+  }
+
+
+  /**
+   * 启动自动连接(应用启动时调用)
+   * 优先尝试连接上次成功的设备,如果没有则扫描新设备
+   */
+  startAutoConnect(): void {
+    console.info('[OppoManager] 启动自动连接...');
+    
+    // 如果有保存的MAC地址,优先尝试直连
+    if (this.savedMac) {
+      console.info(`[OppoManager] 尝试连接已保存设备: ${this.savedMac}`);
+      this.connectToEarphone(this.savedMac);
+    } else {
+      // 没有保存的设备,开始扫描
+      console.info('[OppoManager] 无已保存设备,开始扫描...');
+      this.startScan();
+    }
+  }
+
+
+  /**
+   * 保存已连接的设备MAC(连接成功后自动调用)
+   */
+  private saveConnectedMac(mac: string): void {
+    this.savedMac = mac;
+    console.info(`[OppoManager] 保存设备MAC: ${mac}`);
+  }
+
+
+  /**
+   * 清除已保存的设备MAC
+   */
+  clearSavedMac(): void {
+    this.savedMac = '';
+    console.info('[OppoManager] 已清除保存的设备MAC');
+  }
+
+
+  /**
+   * 尝试重新连接
+   */
+  private scheduleReconnect(): void {
+    if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+      console.warn(`[OppoManager] 达到最大重连次数(${this.MAX_RECONNECT_ATTEMPTS}),停止重连`);
+      this.reconnectAttempts = 0;
+      this.notifyStatus('disconnected');
+      return;
+    }
+
+    this.reconnectAttempts++;
+    console.info(`[OppoManager] 计划重连 (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`);
+    this.notifyStatus('connecting');
+
+    this.autoReconnectTimer = setTimeout(() => {
+      if (this.savedMac) {
+        this.connectToEarphone(this.savedMac);
+      } else {
+        this.startScan();
+      }
+    }, this.RECONNECT_DELAY_MS);
+  }
+
+
+  /**
+   * 取消重连定时器
+   */
+  private cancelReconnect(): void {
+    if (this.autoReconnectTimer !== -1) {
+      clearTimeout(this.autoReconnectTimer);
+      this.autoReconnectTimer = -1;
+    }
+    this.reconnectAttempts = 0;
+  }
 
 
   /**
@@ -624,6 +818,8 @@ export class OppoEarphoneManager {
 
     this.isScanning = true;
 
+    this.cancelReconnect(); // 扫描时取消重连
+
 
 
     // 监听扫描结果
@@ -640,7 +836,7 @@ export class OppoEarphoneManager {
 
         // 通过名字模糊匹配市面上所有的该型号耳机
 
-        if (deviceName && deviceName.includes(this.TARGET_DEVICE_NAME)) {
+        if (deviceName && deviceName.includes('OPPO Enco')) {
 
           console.info(`[OppoManager] 发现目标耳机! 名字: ${deviceName}, MAC: ${deviceMac}`);
 
@@ -745,11 +941,9 @@ export class OppoEarphoneManager {
    */
 
   disconnect(): void {
-
-    this.stopScan();
-
+    this.stopContinuousMonitor(); // 停止监听
     this.stopPeriodicQuery();
-
+    this.cancelReconnect(); // 取消重连
     this.cleanup();
 
     this.notifyStatus('disconnected');
@@ -796,6 +990,10 @@ export class OppoEarphoneManager {
 
           console.info(`[OppoManager] 成功连接到耳机 [${macAddress}]`);
 
+          this.saveConnectedMac(macAddress); // 保存成功连接的MAC
+
+          this.reconnectAttempts = 0; // 重置重连计数
+
           this.notifyStatus('connected');
 
           this.discoverServices();
@@ -807,7 +1005,15 @@ export class OppoEarphoneManager {
           this.cleanup();
 
           this.notifyStatus('disconnected');
-
+          
+          // 如果监听还在运行,重新开始监听周期
+          if (this.isMonitorRunning) {
+            console.info('[OppoManager] 监听模式:断开后继续监听');
+            this.scheduleNextMonitorCycle();
+          } else {
+            // 否则尝试自动重连
+            this.scheduleReconnect();
+          }
         }
 
       });
@@ -1303,11 +1509,13 @@ export class OppoEarphoneManager {
 
     if (data.length < payloadStart + payLen) return;
 
+    // 对于0x0204主动上报，需要过滤电量和佩戴状态报告
     if (cmd === 0x0204 && payLen > 0) {
 
       const reportType = data[payloadStart];
 
-      if (reportType === 0x01 || reportType === 0x02) return;
+      // 0x01=电量报告, 0x02=佩戴状态报告, 0x03=其他状态（非ANC）
+      if (reportType === 0x01 || reportType === 0x02 || reportType === 0x03) return;
 
     }
 
@@ -1509,4 +1717,3 @@ export class OppoEarphoneManager {
   }
 
 }
-
