@@ -19,6 +19,7 @@ struct PopupWindow {
 
   private manager: OppoEarphoneManager = new OppoEarphoneManager();
   private connectTimeout: number = -1;
+  private autoCloseTimeout: number = -1;
 
   aboutToAppear(): void {
     console.info('[PopupWindow] 弹窗界面启动');
@@ -41,9 +42,15 @@ struct PopupWindow {
           this.caseCharging = info.caseCharging;
         }
         
-        // 如果三个电量都已获取,更新提示文本
+        // 如果三个电量都已获取,更新提示文本并2秒后自动关闭
         if (this.leftBattery >= 0 && this.rightBattery >= 0 && this.caseBattery >= 0) {
           this.loadingText = '电量已获取';
+          // 仅在首次获取全部电量时启动自动关闭定时器
+          if (this.autoCloseTimeout === -1) {
+            this.autoCloseTimeout = setTimeout(() => {
+              this.closePopup();
+            }, 2000);
+          }
         }
       },
       (status: ConnectionStatus) => {
@@ -86,6 +93,9 @@ struct PopupWindow {
     console.info('[PopupWindow] 弹窗界面退出');
     if (this.connectTimeout !== -1) {
       clearTimeout(this.connectTimeout);
+    }
+    if (this.autoCloseTimeout !== -1) {
+      clearTimeout(this.autoCloseTimeout);
     }
     this.manager.disconnect();
   }
