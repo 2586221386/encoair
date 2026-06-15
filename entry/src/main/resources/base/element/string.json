@@ -19,6 +19,14 @@
     {
       "name": "PopupAbility_label",
       "value": "耳机电量弹窗"
+    },
+    {
+      "name": "widget_battery_name",
+      "value": "耳机电量"
+    },
+    {
+      "name": "widget_battery_desc",
+      "value": "显示OPPO Enco Air5 Pro左耳、右耳、充电仓电量"
     }
   ]
 }

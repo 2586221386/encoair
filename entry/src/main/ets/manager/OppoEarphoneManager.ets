@@ -1,5 +1,23 @@
 import { ble, socket, connection } from '@kit.ConnectivityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { preferences } from '@kit.ArkData';
+import { formProvider, formBindingData } from '@kit.FormKit';
+import { common } from '@kit.AbilityKit';
+import { fileIo } from '@kit.CoreFileKit';
+
+/**
+ * 桌面卡片电量数据结构
+ */
+class WidgetBatteryData {
+  leftBattery: number = -1;
+  leftCharging: boolean = false;
+  rightBattery: number = -1;
+  rightCharging: boolean = false;
+  caseBattery: number = -1;
+  caseCharging: boolean = false;
+  lastUpdated: string = '--:--';
+  connected: boolean = false;
+}
 
 /**
  * 电池信息数据模型
@@ -121,6 +139,16 @@ export class OppoEarphoneManager {
 
   // 定时查询定时器
   private queryTimer: number = -1;
+
+  // 应用上下文（用于卡片数据刷新），使用静态属性以便所有实例共享
+  private static appContext: common.UIAbilityContext | null = null;
+
+  /**
+   * 设置应用上下文（用于刷新桌面卡片）
+   */
+  setContext(ctx: common.UIAbilityContext): void {
+    OppoEarphoneManager.appContext = ctx;
+  }
 
   /**
    * 设置回调函数
@@ -853,6 +881,87 @@ export class OppoEarphoneManager {
         caseCharging: this.batteryInfo.caseCharging
       });
     }
+    // 同步写入Preferences并刷新桌面卡片
+    this.saveBatteryToWidget();
+  }
+
+  /**
+   * 将电量数据写入Preferences并刷新桌面卡片
+   */
+  private async saveBatteryToWidget(): Promise<void> {
+    if (!OppoEarphoneManager.appContext) {
+      console.warn('[OppoManager] saveBatteryToWidget: appContext为空');
+      return;
+    }
+    // 断开连接时电量为-1，不更新卡片，保留最后一次有效电量
+    if (this.batteryInfo.leftBattery < 0 && this.batteryInfo.rightBattery < 0 && this.batteryInfo.caseBattery < 0) {
+      console.info('[OppoManager] 电量全部为-1(已断开)，跳过卡片更新');
+      return;
+    }
+    try {
+      let pref = preferences.getPreferencesSync(OppoEarphoneManager.appContext, { name: 'battery_widget_data' });
+      pref.putSync('leftBattery', this.batteryInfo.leftBattery);
+      pref.putSync('leftCharging', this.batteryInfo.leftCharging);
+      pref.putSync('rightBattery', this.batteryInfo.rightBattery);
+      pref.putSync('rightCharging', this.batteryInfo.rightCharging);
+      pref.putSync('caseBattery', this.batteryInfo.caseBattery);
+      pref.putSync('caseCharging', this.batteryInfo.caseCharging);
+      pref.putSync('connected', this.isConnected);
+      let now = new Date();
+      let timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      pref.putSync('lastUpdated', timeStr);
+      // 必须等待 flush 完成，确保数据持久化到磁盘
+      await pref.flush();
+      console.info(`[OppoManager] 电量数据已写入Preferences: L=${this.batteryInfo.leftBattery} R=${this.batteryInfo.rightBattery} C=${this.batteryInfo.caseBattery}`);
+
+      // 从文件读取 formId 列表（由 BatteryFormAbility 写入，绕过 Preferences 跨进程缓存）
+      let formIds: string[] = this.readFormIdsFromFile();
+      console.info(`[OppoManager] 读取到 ${formIds.length} 个formId`);
+
+      // 逐个刷新卡片
+      for (let i = 0; i < formIds.length; i++) {
+        let formId = formIds[i];
+        try {
+          let widgetData = new WidgetBatteryData();
+          widgetData.leftBattery = this.batteryInfo.leftBattery;
+          widgetData.leftCharging = this.batteryInfo.leftCharging;
+          widgetData.rightBattery = this.batteryInfo.rightBattery;
+          widgetData.rightCharging = this.batteryInfo.rightCharging;
+          widgetData.caseBattery = this.batteryInfo.caseBattery;
+          widgetData.caseCharging = this.batteryInfo.caseCharging;
+          widgetData.lastUpdated = timeStr;
+          widgetData.connected = this.isConnected;
+          let data = formBindingData.createFormBindingData(widgetData);
+          await formProvider.updateForm(formId, data);
+          console.info(`[OppoManager] 卡片已刷新: formId=${formId}`);
+        } catch (updateErr) {
+          console.warn(`[OppoManager] 刷新卡片失败: formId=${formId}, err=${(updateErr as BusinessError).message}`);
+        }
+      }
+    } catch (err) {
+      // 卡片刷新失败不影响主流程
+      console.warn(`[OppoManager] 刷新桌面卡片失败: ${(err as BusinessError).message}`);
+    }
+  }
+
+  /**
+   * 从文件读取 formId 列表（绕过 Preferences 跨进程缓存）
+   */
+  private readFormIdsFromFile(): string[] {
+    if (!OppoEarphoneManager.appContext) return [];
+    try {
+      let filePath = `${OppoEarphoneManager.appContext.filesDir}/form_ids.json`;
+      if (fileIo.accessSync(filePath)) {
+        let content: string = fileIo.readTextSync(filePath);
+        if (content && content.length > 0) {
+          let parsed: string[] = JSON.parse(content) as string[];
+          return parsed;
+        }
+      }
+    } catch (err) {
+      console.warn(`[OppoManager] 读取formIds文件失败: ${(err as BusinessError).message}`);
+    }
+    return [];
   }
 
   /**

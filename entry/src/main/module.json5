@@ -57,6 +57,18 @@
             "resource": "$profile:backup_config"
           }
         ],
+      },
+      {
+        "name": "BatteryFormAbility",
+        "srcEntry": "./ets/formability/BatteryFormAbility.ets",
+        "type": "form",
+        "description": "$string:widget_battery_desc",
+        "metadata": [
+          {
+            "name": "ohos.extension.form",
+            "resource": "$profile:form_config"
+          }
+        ]
       }
     ]
   }

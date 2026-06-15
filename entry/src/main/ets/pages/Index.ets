@@ -127,6 +127,8 @@ struct Index {
   private manager: OppoEarphoneManager = new OppoEarphoneManager();
 
   aboutToAppear(): void {
+    // 设置应用上下文，用于桌面卡片数据刷新
+    this.manager.setContext(getContext(this) as common.UIAbilityContext);
     this.manager.setCallbacks(
       (info: BatteryInfo) => {
         console.info(`[Index] 收到电量更新: 左=${info.leftBattery}, 右=${info.rightBattery}, 仓=${info.caseBattery}`);

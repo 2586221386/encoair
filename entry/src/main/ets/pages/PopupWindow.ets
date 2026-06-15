@@ -23,6 +23,9 @@ struct PopupWindow {
 
   aboutToAppear(): void {
     console.info('[PopupWindow] 弹窗界面启动');
+
+    // 设置应用上下文，用于桌面卡片数据刷新
+    this.manager.setContext(getContext(this) as common.UIAbilityContext);
     
     // 设置回调
     this.manager.setCallbacks(

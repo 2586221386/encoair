@@ -1,0 +1,169 @@
+let storage = new LocalStorage();
+
+/**
+ * 桌面电量卡片 UI（2*2尺寸）
+ * 显示左耳、右耳、充电仓三部分电量
+ */
+@Entry(storage)
+@Component
+struct BatteryWidgetPage {
+  @LocalStorageProp('leftBattery') leftBattery: number = -1;
+  @LocalStorageProp('leftCharging') leftCharging: boolean = false;
+  @LocalStorageProp('rightBattery') rightBattery: number = -1;
+  @LocalStorageProp('rightCharging') rightCharging: boolean = false;
+  @LocalStorageProp('caseBattery') caseBattery: number = -1;
+  @LocalStorageProp('caseCharging') caseCharging: boolean = false;
+  @LocalStorageProp('lastUpdated') lastUpdated: string = '--:--';
+  @LocalStorageProp('connected') connected: boolean = false;
+
+  /**
+   * 根据电量返回颜色
+   */
+  getBatteryColor(battery: number): string {
+    if (battery < 0) {
+      return '#666666';
+    }
+    if (battery < 20) {
+      return '#FF4444';
+    }
+    if (battery < 60) {
+      return '#FF9800';
+    }
+    return '#4CAF50';
+  }
+
+  /**
+   * 电量文本
+   */
+  getBatteryText(battery: number): string {
+    return battery < 0 ? '--' : `${battery}%`;
+  }
+
+  build() {
+    Column() {
+      // 顶部标题
+      Row() {
+        Text('OPPO Enco Air5 Pro')
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#333333')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .width('100%')
+
+      // 三电量区域
+      Row() {
+        // 左耳
+        Column() {
+          Stack({ alignContent: Alignment.Center }) {
+            Progress({
+              value: this.leftBattery < 0 ? 0 : this.leftBattery,
+              total: 100,
+              type: ProgressType.Ring
+            })
+              .width(42)
+              .height(42)
+              .color(this.getBatteryColor(this.leftBattery))
+              .backgroundColor('#E8E8E8')
+              .style({ strokeWidth: 4 })
+
+            Text(this.getBatteryText(this.leftBattery))
+              .fontSize(11)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#333333')
+          }
+          .width(42)
+          .height(42)
+          .margin({ top: 6 })
+
+          Text('左耳')
+            .fontSize(10)
+            .fontColor('#888888')
+            .margin({ top: 3 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+
+        // 右耳
+        Column() {
+          Stack({ alignContent: Alignment.Center }) {
+            Progress({
+              value: this.rightBattery < 0 ? 0 : this.rightBattery,
+              total: 100,
+              type: ProgressType.Ring
+            })
+              .width(42)
+              .height(42)
+              .color(this.getBatteryColor(this.rightBattery))
+              .backgroundColor('#E8E8E8')
+              .style({ strokeWidth: 4 })
+
+            Text(this.getBatteryText(this.rightBattery))
+              .fontSize(11)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#333333')
+          }
+          .width(42)
+          .height(42)
+          .margin({ top: 6 })
+
+          Text('右耳')
+            .fontSize(10)
+            .fontColor('#888888')
+            .margin({ top: 3 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+
+        // 充电仓
+        Column() {
+          Stack({ alignContent: Alignment.Center }) {
+            Progress({
+              value: this.caseBattery < 0 ? 0 : this.caseBattery,
+              total: 100,
+              type: ProgressType.Ring
+            })
+              .width(42)
+              .height(42)
+              .color(this.getBatteryColor(this.caseBattery))
+              .backgroundColor('#E8E8E8')
+              .style({ strokeWidth: 4 })
+
+            Text(this.getBatteryText(this.caseBattery))
+              .fontSize(11)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#333333')
+          }
+          .width(42)
+          .height(42)
+          .margin({ top: 6 })
+
+          Text('充电仓')
+            .fontSize(10)
+            .fontColor('#888888')
+            .margin({ top: 3 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+      }
+      .width('100%')
+      .margin({ top: 4 })
+
+      // 底部更新时间
+      Row() {
+        Text(`${this.lastUpdated} 更新`)
+          .fontSize(10)
+          .fontColor('#AAAAAA')
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Center)
+      .margin({ top: 4 })
+    }
+    .width('100%')
+    .height('100%')
+    .padding(12)
+    .backgroundColor('#FFFFFF')
+    .borderRadius(16)
+  }
+}
