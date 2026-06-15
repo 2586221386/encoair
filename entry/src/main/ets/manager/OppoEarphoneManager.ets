@@ -91,6 +91,7 @@ export class OppoEarphoneManager {
   private ancCallback: ((mode: number) => void) | null = null;
   private wearCallback: ((wear: WearStatus) => void) | null = null;
   private gameModeCallback: ((enabled: boolean) => void) | null = null;
+  private spatialAudioCallback: ((enabled: boolean) => void) | null = null;
 
   // 当前电量状态
   private batteryInfo: BatteryInfo = {
@@ -115,6 +116,9 @@ export class OppoEarphoneManager {
   // 游戏模式状态
   private gameModeEnabled: boolean = false;
 
+  // 空间音频状态（0=关闭, 1=固定/开启）
+  private spatialAudioEnabled: boolean = false;
+
   // 定时查询定时器
   private queryTimer: number = -1;
 
@@ -122,13 +126,15 @@ export class OppoEarphoneManager {
    * 设置回调函数
    */
   setCallbacks(batteryCb: (info: BatteryInfo) => void, statusCb: (status: ConnectionStatus) => void, rawCb?: (hex: string) => void,
-    ancCb?: (mode: number) => void, wearCb?: (wear: WearStatus) => void, gameCb?: (enabled: boolean) => void): void {
+    ancCb?: (mode: number) => void, wearCb?: (wear: WearStatus) => void, gameCb?: (enabled: boolean) => void,
+    spatialAudioCb?: (enabled: boolean) => void): void {
     this.batteryCallback = batteryCb;
     this.statusCallback = statusCb;
     this.rawDataCallback = rawCb ?? null;
     this.ancCallback = ancCb ?? null;
     this.wearCallback = wearCb ?? null;
     this.gameModeCallback = gameCb ?? null;
+    this.spatialAudioCallback = spatialAudioCb ?? null;
   }
 
   /**
@@ -434,6 +440,30 @@ export class OppoEarphoneManager {
   }
 
   /**
+   * 查询空间音频状态（复用功能查询指令，feature=0x1B）
+   */
+  querySpatialAudio(): void {
+    const packet = this.buildPacket(0x010D, 0x00, []);
+    this.sendPacket(packet);
+  }
+
+  /**
+   * 设置空间音频开关
+   * 使用 cmd=0x0403 + feature=0x1B（空间音效特征码）
+   */
+  setSpatialAudio(enabled: boolean): void {
+    this.spatialAudioEnabled = enabled;
+    this.notifySpatialAudioUpdate(enabled);
+    const payload: number[] = [0x1B, enabled ? 0x01 : 0x00];
+    const packet = this.buildPacket(0x0403, 0x00, payload);
+    this.sendPacket(packet);
+    console.info(`[OppoManager] 发送空间音频切换指令: ${enabled ? '开启' : '关闭'}`);
+    setTimeout(() => {
+      this.querySpatialAudio();
+    }, 350);
+  }
+
+  /**
    * 启用主动状态上报
    */
   enableStatusReport(): void {
@@ -493,6 +523,10 @@ export class OppoEarphoneManager {
 
   private notifyGameModeUpdate(enabled: boolean): void {
     if (this.gameModeCallback) this.gameModeCallback(enabled);
+  }
+
+  private notifySpatialAudioUpdate(enabled: boolean): void {
+    if (this.spatialAudioCallback) this.spatialAudioCallback(enabled);
   }
 
   /**
@@ -630,6 +664,8 @@ export class OppoEarphoneManager {
             this.parseWearStatus(valueArray);
             // 解析游戏模式
             this.parseGameMode(valueArray);
+            // 解析空间音频
+            this.parseSpatialAudio(valueArray);
           });
         } catch (readErr) {
           let error = readErr as BusinessError;
@@ -648,6 +684,7 @@ export class OppoEarphoneManager {
               this.queryBattery();
               this.queryAncMode();
               this.queryGameMode();
+              this.querySpatialAudio();
               this.startPeriodicQuery();
             }, 200);
           }, 200);
@@ -941,7 +978,7 @@ export class OppoEarphoneManager {
   }
 
   /**
-   * 解析游戏模式
+   * 解析游戏模式（cmd=0x810D 响应，扫描 0x28 游戏模式 和 0x1B 空间音频特征）
    */
   private parseGameMode(data: Uint8Array): void {
     if (data.length < 9 || data[0] !== 0xAA) return;
@@ -965,7 +1002,61 @@ export class OppoEarphoneManager {
           this.notifyGameModeUpdate(enabled);
           console.info(`[OppoManager] 游戏模式: ${enabled ? '开启' : '关闭'}`);
         }
-        return;
+      }
+      if (data[i] === 0x1B) {
+        const enabled = data[i + 1] === 0x01;
+        console.info(`[OppoManager] parseGameMode 找到 0x1B 特征值，空间音频=${enabled ? '开启' : '关闭'}`);
+        if (this.spatialAudioEnabled !== enabled) {
+          this.spatialAudioEnabled = enabled;
+          this.notifySpatialAudioUpdate(enabled);
+          console.info(`[OppoManager] 空间音频: ${enabled ? '开启' : '关闭'}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * 解析空间音频通知（cmd=0x0510 主动上报 和 cmd=0x8422 设置响应）
+   */
+  private parseSpatialAudio(data: Uint8Array): void {
+    if (data.length < 9 || data[0] !== 0xAA) return;
+    const cmdLow = data[4];
+    const cmdHigh = data[5];
+    const cmd = cmdLow | (cmdHigh << 8);
+    const payLen = (data[7] | (data[8] << 8));
+    const payloadStart = 9;
+    if (data.length < payloadStart + payLen || payLen < 1) return;
+    // 0x0510 = 空间音频模式主动通知，payload[0] = mode（0=关, 1=固定, 2=头部追踪）
+    if (cmd === 0x0510) {
+      const mode = data[payloadStart];
+      const enabled = mode !== 0x00;
+      console.info(`[OppoManager] 空间音频通知(0x0510): mode=${mode}, 开启=${enabled}`);
+      if (this.spatialAudioEnabled !== enabled) {
+        this.spatialAudioEnabled = enabled;
+        this.notifySpatialAudioUpdate(enabled);
+      }
+    }
+    // 0x8422 = 空间音频设置响应（专用指令），payload[0] = mode
+    if (cmd === 0x8422) {
+      const mode = data[payloadStart];
+      const enabled = mode !== 0x00;
+      console.info(`[OppoManager] 空间音频设置响应(0x8422): mode=${mode}, 开启=${enabled}`);
+      if (this.spatialAudioEnabled !== enabled) {
+        this.spatialAudioEnabled = enabled;
+        this.notifySpatialAudioUpdate(enabled);
+      }
+    }
+    // 0x8403 = 特征开关响应，扫描 0x1B 空间音效特征
+    if (cmd === 0x8403 && payLen >= 2) {
+      for (let i = payloadStart; i < payloadStart + payLen - 1; i++) {
+        if (data[i] === 0x1B) {
+          const enabled = data[i + 1] === 0x01;
+          console.info(`[OppoManager] 空间音频开关响应(0x8403,0x1B): ${enabled ? '开启' : '关闭'}`);
+          if (this.spatialAudioEnabled !== enabled) {
+            this.spatialAudioEnabled = enabled;
+            this.notifySpatialAudioUpdate(enabled);
+          }
+        }
       }
     }
   }

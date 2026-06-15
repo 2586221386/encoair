@@ -121,6 +121,8 @@ struct Index {
   @State caseWear: WearState = WearState.DISCONNECTED;
   // 游戏模式
   @State gameModeEnabled: boolean = false;
+  // 空间音频
+  @State spatialAudioEnabled: boolean = false;
 
   private manager: OppoEarphoneManager = new OppoEarphoneManager();
 
@@ -178,6 +180,11 @@ struct Index {
         // 游戏模式更新
         this.gameModeEnabled = enabled;
         console.info(`[Index] 游戏模式: ${enabled ? '开启' : '关闭'}`);
+      },
+      (enabled: boolean) => {
+        // 空间音频更新
+        this.spatialAudioEnabled = enabled;
+        console.info(`[Index] 空间音频: ${enabled ? '开启' : '关闭'}`);
       }
     );
     
@@ -743,6 +750,36 @@ struct Index {
             .onClick(() => {
               // 切换游戏模式
               this.manager.setGameMode(!this.gameModeEnabled);
+            })
+        } else {
+          Text('--')
+            .fontSize(14)
+            .fontColor('#666688')
+        }
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 8, bottom: 12 })
+
+      // 空间音频
+      Row() {
+        Text('🎧')
+          .fontSize(18)
+        Text(' 空间音频')
+          .fontSize(14)
+          .fontColor('#AAAACC')
+          .margin({ left: 6 })
+
+        Blank()
+
+        if (this.connectionStatus === 'subscribed') {
+          Button(this.spatialAudioEnabled ? '已开启' : '已关闭')
+            .fontSize(13)
+            .height(32)
+            .backgroundColor(this.spatialAudioEnabled ? '#4CAF50' : '#666666')
+            .borderRadius(16)
+            .onClick(() => {
+              // 切换空间音频
+              this.manager.setSpatialAudio(!this.spatialAudioEnabled);
             })
         } else {
           Text('--')
