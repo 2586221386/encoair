@@ -2,6 +2,9 @@ import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.Ab
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
+import { workScheduler } from '@kit.BackgroundTasksKit';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { OppoEarphoneManager } from '../manager/OppoEarphoneManager';
 
 const DOMAIN = 0x0000;
 
@@ -19,6 +22,9 @@ export default class EntryAbility extends UIAbility {
     
     // 保存want参数,供onWindowStageCreate使用
     this.privateLaunchWant = want;
+    
+    // 调度桌面卡片后台刷新任务
+    this.scheduleWidgetBackgroundWork();
   }
 
   onDestroy(): void {
@@ -65,11 +71,13 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     // Ability has brought to foreground
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
+    OppoEarphoneManager.isAppForeground = true;
   }
 
   onBackground(): void {
     // Ability has back to background
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
+    OppoEarphoneManager.isAppForeground = false;
   }
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
@@ -109,6 +117,11 @@ export default class EntryAbility extends UIAbility {
       if (params['show_popup'] === true || params['action'] === 'show_popup') {
         return true;
       }
+      // 方式3b: postCardAction 'router' 动作将params嵌套在formRouterParams中
+      let formRouterParams = params['formRouterParams'] as Record<string, Object> | undefined;
+      if (formRouterParams && formRouterParams['show_popup'] === true) {
+        return true;
+      }
     }
     
     // 方式4: 检查callerBundleName,如果是系统应用或其他应用启动的,视为外部唤醒
@@ -141,6 +154,30 @@ export default class EntryAbility extends UIAbility {
       hilog.info(DOMAIN, 'testTag', '弹窗窗口样式设置成功');
     } catch (error) {
       hilog.error(DOMAIN, 'testTag', '设置弹窗窗口样式失败: %{public}s', JSON.stringify(error));
+    }
+  }
+
+  /**
+   * 调度桌面卡片后台刷新延迟任务
+   * 系统每20分钟唤醒应用，连接耳机获取电量并刷新桌面卡片
+   */
+  private scheduleWidgetBackgroundWork(): void {
+    let workInfo: workScheduler.WorkInfo = {
+      workId: 1001,
+      bundleName: 'com.hzx.encoair',
+      abilityName: 'WorkSchedulerExtension',
+      isRepeat: true,
+      repeatCycleTime: 1200000,
+      isPersisted: true
+    };
+
+    try {
+      workScheduler.startWork(workInfo);
+      hilog.info(DOMAIN, 'testTag', '桌面卡片后台刷新任务已调度（每20分钟）');
+    } catch (error) {
+      let err = error as BusinessError;
+      hilog.error(DOMAIN, 'testTag', '调度后台任务失败: code=%{public}s, msg=%{public}s',
+        String(err.code), err.message);
     }
   }
 }

@@ -3,6 +3,7 @@ let storage = new LocalStorage();
 /**
  * 桌面电量卡片 UI（2*2尺寸）
  * 显示左耳、右耳、充电仓三部分电量
+ * 点击卡片可通过 postCardAction 唤醒应用刷新电量
  */
 @Entry(storage)
 @Component
@@ -40,7 +41,8 @@ struct BatteryWidgetPage {
   }
 
   build() {
-    Column() {
+    Stack() {
+      Column() {
       // 顶部标题
       Row() {
         Text('OPPO Enco Air5 Pro')
@@ -55,6 +57,7 @@ struct BatteryWidgetPage {
       // 三电量区域
       Row() {
         // 左耳
+        
         Column() {
           Stack({ alignContent: Alignment.Center }) {
             Progress({
@@ -150,9 +153,9 @@ struct BatteryWidgetPage {
       .width('100%')
       .margin({ top: 4 })
 
-      // 底部更新时间
+      // 底部更新时间 + 刷新提示
       Row() {
-        Text(`${this.lastUpdated} 更新`)
+        Text(`${this.lastUpdated} 更新 · 点击刷新`)
           .fontSize(10)
           .fontColor('#AAAAAA')
       }
@@ -165,5 +168,25 @@ struct BatteryWidgetPage {
     .padding(12)
     .backgroundColor('#FFFFFF')
     .borderRadius(16)
+
+      // 透明点击覆盖层：点击卡片任意位置触发刷新
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#00000000')
+        .onClick(() => {
+          postCardAction(this, {
+            action: 'router',
+            bundleName: 'com.hzx.encoair',
+            abilityName: 'EntryAbility',
+            params: {
+              'show_popup': true,
+              'widget_refresh': true
+            }
+          });
+        })
+    }
+    .width('100%')
+    .height('100%')
   }
 }

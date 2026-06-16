@@ -69,6 +69,13 @@
             "resource": "$profile:form_config"
           }
         ]
+      },
+      {
+        "name": "WorkSchedulerExtension",
+        "srcEntry": "./ets/extension/WorkSchedulerExtension.ets",
+        "type": "workScheduler",
+        "label": "$string:work_scheduler_label",
+        "description": "$string:work_scheduler_desc"
       }
     ]
   }

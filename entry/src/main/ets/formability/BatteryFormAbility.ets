@@ -80,6 +80,19 @@ export default class BatteryFormAbility extends FormExtensionAbility {
       let caseCharging: boolean = pref.getSync('caseCharging', false) as boolean;
       let lastUpdated: string = pref.getSync('lastUpdated', '--:--') as string;
       let connected: boolean = pref.getSync('connected', false) as boolean;
+      let dataTimestamp: number = pref.getSync('dataTimestamp', 0) as number;
+
+      // 数据时效性检查：超过60分钟或已断开连接，显示"--"
+      let now = new Date().getTime();
+      let isStale = dataTimestamp > 0 && (now - dataTimestamp) > 3600000;
+      if (!connected || isStale) {
+        hilog.info(0x0000, 'BatteryForm',
+          '数据已过期或已断开(connected=%{public}s, stale=%{public}s)，显示默认值',
+          String(connected), String(isStale));
+        let fallback = new BatteryWidgetData();
+        fallback.lastUpdated = lastUpdated;
+        return fallback;
+      }
 
       hilog.info(0x0000, 'BatteryForm',
         '读取电量: L=%{public}d R=%{public}d C=%{public}d connected=%{public}s',

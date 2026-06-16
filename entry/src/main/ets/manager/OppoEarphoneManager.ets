@@ -78,6 +78,22 @@ export function getAncModeName(mode: number): string {
  * 相比 BLE GATT 方式更加稳定可靠
  */
 export class OppoEarphoneManager {
+  // 单例实例（用于后台任务获取Manager）
+  private static instance: OppoEarphoneManager | null = null;
+
+  /**
+   * 获取单例实例（后台任务/WorkScheduler使用）
+   */
+  static getInstance(): OppoEarphoneManager {
+    if (!OppoEarphoneManager.instance) {
+      OppoEarphoneManager.instance = new OppoEarphoneManager();
+    }
+    return OppoEarphoneManager.instance;
+  }
+
+  // 应用前后台状态（后台任务跳过前台运行时的刷新）
+  static isAppForeground: boolean = false;
+
   // OPPO Enco Air5 Pro RFCOMM UUID（与安卓 OppoPods 项目一致）
   private RFCOMM_UUID: string = '0000079A-D102-11E1-9B23-00025B00A5A5';
   private TARGET_DEVICE_NAME: string = 'OPPO Enco Air5 Pro';
@@ -141,12 +157,12 @@ export class OppoEarphoneManager {
   private queryTimer: number = -1;
 
   // 应用上下文（用于卡片数据刷新），使用静态属性以便所有实例共享
-  private static appContext: common.UIAbilityContext | null = null;
+  private static appContext: common.Context | null = null;
 
   /**
    * 设置应用上下文（用于刷新桌面卡片）
    */
-  setContext(ctx: common.UIAbilityContext): void {
+  setContext(ctx: common.Context): void {
     OppoEarphoneManager.appContext = ctx;
   }
 
@@ -314,11 +330,21 @@ export class OppoEarphoneManager {
   }
 
   /**
-   * 保存已连接的设备MAC
+   * 保存已连接的设备MAC（同时持久化到Preferences供后台任务读取）
    */
   private saveConnectedMac(mac: string): void {
     this.savedMac = mac;
     console.info(`[OppoManager] 保存设备MAC: ${mac}`);
+    // 持久化MAC以便后台任务读取
+    if (OppoEarphoneManager.appContext) {
+      try {
+        let pref = preferences.getPreferencesSync(OppoEarphoneManager.appContext, { name: 'battery_widget_data' });
+        pref.putSync('savedMac', mac);
+        pref.flush();
+      } catch (e) {
+        // 不影响主流程
+      }
+    }
   }
 
   /**
@@ -913,18 +939,26 @@ export class OppoEarphoneManager {
       return;
     }
     let isDisconnect = this.batteryInfo.leftBattery < 0 && this.batteryInfo.rightBattery < 0 && this.batteryInfo.caseBattery < 0;
+    // 断开连接时强制写入-1，确保卡片显示"--"
+    let writeLeft: number = this.isConnected ? this.batteryInfo.leftBattery : -1;
+    let writeRight: number = this.isConnected ? this.batteryInfo.rightBattery : -1;
+    let writeCase: number = this.isConnected ? this.batteryInfo.caseBattery : -1;
+    let writeLeftCharging: boolean = this.isConnected ? this.batteryInfo.leftCharging : false;
+    let writeRightCharging: boolean = this.isConnected ? this.batteryInfo.rightCharging : false;
+    let writeCaseCharging: boolean = this.isConnected ? this.batteryInfo.caseCharging : false;
     try {
       let pref = preferences.getPreferencesSync(OppoEarphoneManager.appContext, { name: 'battery_widget_data' });
-      pref.putSync('leftBattery', this.batteryInfo.leftBattery);
-      pref.putSync('leftCharging', this.batteryInfo.leftCharging);
-      pref.putSync('rightBattery', this.batteryInfo.rightBattery);
-      pref.putSync('rightCharging', this.batteryInfo.rightCharging);
-      pref.putSync('caseBattery', this.batteryInfo.caseBattery);
-      pref.putSync('caseCharging', this.batteryInfo.caseCharging);
+      pref.putSync('leftBattery', writeLeft);
+      pref.putSync('leftCharging', writeLeftCharging);
+      pref.putSync('rightBattery', writeRight);
+      pref.putSync('rightCharging', writeRightCharging);
+      pref.putSync('caseBattery', writeCase);
+      pref.putSync('caseCharging', writeCaseCharging);
       pref.putSync('connected', this.isConnected);
       let now = new Date();
       let timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       pref.putSync('lastUpdated', timeStr);
+      pref.putSync('dataTimestamp', now.getTime());
       // 必须等待 flush 完成，确保数据持久化到磁盘
       await pref.flush();
       console.info(`[OppoManager] 电量数据已写入Preferences: L=${this.batteryInfo.leftBattery} R=${this.batteryInfo.rightBattery} C=${this.batteryInfo.caseBattery} connected=${this.isConnected} isDisconnect=${isDisconnect}`);
@@ -938,12 +972,12 @@ export class OppoEarphoneManager {
         let formId = formIds[i];
         try {
           let widgetData = new WidgetBatteryData();
-          widgetData.leftBattery = this.batteryInfo.leftBattery;
-          widgetData.leftCharging = this.batteryInfo.leftCharging;
-          widgetData.rightBattery = this.batteryInfo.rightBattery;
-          widgetData.rightCharging = this.batteryInfo.rightCharging;
-          widgetData.caseBattery = this.batteryInfo.caseBattery;
-          widgetData.caseCharging = this.batteryInfo.caseCharging;
+          widgetData.leftBattery = writeLeft;
+          widgetData.leftCharging = writeLeftCharging;
+          widgetData.rightBattery = writeRight;
+          widgetData.rightCharging = writeRightCharging;
+          widgetData.caseBattery = writeCase;
+          widgetData.caseCharging = writeCaseCharging;
           widgetData.lastUpdated = timeStr;
           widgetData.connected = this.isConnected;
           let data = formBindingData.createFormBindingData(widgetData);
@@ -1183,5 +1217,143 @@ export class OppoEarphoneManager {
         }
       }
     }
+  }
+
+  // ============== 后台卡片刷新 ==============
+
+  /**
+   * 后台刷新桌面卡片电量（由WorkSchedulerExtension调用）
+   * 流程：读取已保存MAC → 静默SPP连接 → 发送电量查询 → 等待响应 → 写入Preferences → 刷新卡片 → 断开
+   */
+  refreshWidgetInBackground(): void {
+    console.info('[OppoManager] 后台卡片刷新开始');
+
+    // 如果已有活跃连接（主应用正在运行），跳过
+    if (this.isConnected) {
+      console.info('[OppoManager] 已有活跃连接，跳过后台刷新');
+      return;
+    }
+
+    // 读取保存的MAC地址
+    let mac = this.savedMac;
+    if (!mac && OppoEarphoneManager.appContext) {
+      try {
+        let pref = preferences.getPreferencesSync(OppoEarphoneManager.appContext, { name: 'battery_widget_data' });
+        mac = pref.getSync('savedMac', '') as string;
+        if (mac) {
+          this.savedMac = mac;
+        }
+      } catch (e) {
+        // 忽略
+      }
+    }
+
+    if (!mac) {
+      console.info('[OppoManager] 后台刷新: 无已保存MAC地址，跳过');
+      return;
+    }
+
+    console.info(`[OppoManager] 后台刷新: 尝试连接 ${mac}`);
+    this.connectForBackgroundQuery(mac);
+  }
+
+  /**
+   * 静默SPP连接并查询电量（后台专用）
+   * 不触发UI状态回调，不影响主界面显示
+   */
+  private connectForBackgroundQuery(macAddress: string): void {
+    try {
+      let sppOption: socket.SppOptions = {
+        uuid: this.RFCOMM_UUID,
+        secure: false,
+        type: socket.SppType.SPP_RFCOMM
+      };
+
+      socket.sppConnect(macAddress, sppOption, (err: BusinessError, clientNum: number) => {
+        if (err) {
+          console.warn(`[OppoManager] 后台SPP连接失败: ${err.message}`);
+          return;
+        }
+
+        console.info(`[OppoManager] 后台SPP连接成功: clientNum=${clientNum}`);
+        this.sppClientNumber = clientNum;
+        this.isConnected = true;
+
+        // 标记已收到所有电量（用于判断是否可以断开）
+        let allBatteriesReceived: boolean = false;
+
+        // 超时保护：12秒后强制断开
+        let bgTimeout: number = setTimeout(() => {
+          console.warn('[OppoManager] 后台查询超时，强制断开');
+          allBatteriesReceived = true;
+          this.disconnectSilently();
+          // 超时时不更新卡片，保留上次有效数据
+          if (this.batteryInfo.leftBattery >= 0 || this.batteryInfo.rightBattery >= 0 ||
+              this.batteryInfo.caseBattery >= 0) {
+            this.saveBatteryToWidget();
+          }
+        }, 12000);
+
+        // 注册数据接收监听
+        try {
+          socket.on('sppRead', clientNum, (dataBuffer: ArrayBuffer) => {
+            let valueArray = new Uint8Array(dataBuffer);
+            if (valueArray.length >= 9 && valueArray[0] === 0xAA) {
+              const cmdLow = valueArray[4];
+              const cmdHigh = valueArray[5];
+              const cmd = cmdLow | (cmdHigh << 8);
+              console.info(`[OppoManager] 后台接收: cmd=0x${cmd.toString(16)}, 长度=${valueArray.length}`);
+            }
+            // 解析电量数据
+            this.parseOppoBattery(valueArray);
+
+            // 检查是否三个电量都已获取
+            if (this.batteryInfo.leftBattery >= 0 && this.batteryInfo.rightBattery >= 0 &&
+                this.batteryInfo.caseBattery >= 0 && !allBatteriesReceived) {
+              allBatteriesReceived = true;
+              clearTimeout(bgTimeout);
+              console.info('[OppoManager] 后台电量获取完成，断开连接并更新卡片');
+              this.disconnectSilently();
+              this.saveBatteryToWidget();
+            }
+          });
+        } catch (readErr) {
+          let error = readErr as BusinessError;
+          console.error(`[OppoManager] 后台注册sppRead失败: ${error.message}`);
+        }
+
+        // 发送使能状态报告和电量查询
+        setTimeout(() => {
+          this.enableStatusReport();
+          setTimeout(() => {
+            this.queryBattery();
+          }, 200);
+        }, 300);
+      });
+    } catch (err) {
+      let error = err as BusinessError;
+      console.error(`[OppoManager] 后台SPP连接异常: ${error.message}`);
+    }
+  }
+
+  /**
+   * 静默断开SPP连接（不影响UI状态，不触发卡片更新）
+   */
+  private disconnectSilently(): void {
+    if (this.sppClientNumber >= 0) {
+      try {
+        socket.off('sppRead', this.sppClientNumber);
+      } catch (e) {
+        // 忽略
+      }
+      try {
+        socket.sppCloseClientSocket(this.sppClientNumber);
+      } catch (e) {
+        // 忽略
+      }
+      this.sppClientNumber = -1;
+    }
+    this.isConnected = false;
+    console.info('[OppoManager] 后台静默断开完成');
   }
 }
