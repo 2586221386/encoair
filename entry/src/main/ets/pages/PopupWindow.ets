@@ -31,6 +31,16 @@ struct PopupWindow {
     this.manager.setCallbacks(
       (info: BatteryInfo) => {
         console.info(`[PopupWindow] 收到电量更新: 左=${info.leftBattery}, 右=${info.rightBattery}, 仓=${info.caseBattery}`);
+        // 断开连接时电量为-1，直接重置
+        if (info.leftBattery < 0 && info.rightBattery < 0 && info.caseBattery < 0) {
+          this.leftBattery = -1;
+          this.rightBattery = -1;
+          this.caseBattery = -1;
+          this.leftCharging = false;
+          this.rightCharging = false;
+          this.caseCharging = false;
+          return;
+        }
         // 更新电量数据
         if (info.leftBattery >= 0 && info.leftBattery % 10 === 0) {
           this.leftBattery = info.leftBattery;
@@ -100,7 +110,7 @@ struct PopupWindow {
     if (this.autoCloseTimeout !== -1) {
       clearTimeout(this.autoCloseTimeout);
     }
-    this.manager.disconnect();
+    this.manager.disconnect(true);
   }
 
   getBatteryColor(battery: number, charging: boolean): string {

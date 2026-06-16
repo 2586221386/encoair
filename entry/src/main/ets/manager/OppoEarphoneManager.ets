@@ -400,7 +400,13 @@ export class OppoEarphoneManager {
       console.info(`[OppoManager] 指令发送成功: ${this.toHexStr(packet)}`);
     } catch (err) {
       let error = err as BusinessError;
-      console.error(`[OppoManager] 写入失败: ${error.message}`);
+      console.error(`[OppoManager] 写入失败: ${error.message}, code=${error.code}, type=${typeof error.code}`);
+      // 错误码2901054表示SPP IO错误（连接已断开）
+      let errCode: number = Number(error.code);
+      if (errCode === 2901054) {
+        console.info('[OppoManager] 检测到SPP IO错误(2901054)，自然断开');
+        this.disconnect(false);
+      }
     }
   }
 
@@ -617,12 +623,13 @@ export class OppoEarphoneManager {
 
   /**
    * 断开连接并清理资源
+   * @param silent 静默模式（页面销毁时用true，不更新桌面卡片）
    */
-  disconnect(): void {
+  disconnect(silent: boolean = false): void {
     this.stopContinuousMonitor();
     this.stopPeriodicQuery();
     this.cancelReconnect();
-    this.cleanup();
+    this.cleanup(silent);
     this.notifyStatus('disconnected');
   }
 
@@ -676,6 +683,12 @@ export class OppoEarphoneManager {
         try {
           socket.on('sppRead', clientNum, (dataBuffer: ArrayBuffer) => {
             let valueArray = new Uint8Array(dataBuffer);
+            // 空数据表示蓝牙连接已自然断开（耳机断电/超出范围）
+            if (valueArray.length === 0) {
+              console.info('[OppoManager] sppRead收到空数据，检测到自然断开');
+              this.disconnect(false);
+              return;
+            }
             if (valueArray.length >= 9 && valueArray[0] === 0xAA) {
               const cmdLow = valueArray[4];
               const cmdHigh = valueArray[5];
@@ -752,7 +765,7 @@ export class OppoEarphoneManager {
   /**
    * 清理连接资源
    */
-  private cleanup(): void {
+  private cleanup(silent: boolean = false): void {
     this.closeSocket();
     this.connectedMac = '';
     // 重置电量信息
@@ -764,7 +777,13 @@ export class OppoEarphoneManager {
       caseBattery: -1,
       caseCharging: false
     };
-    this.notifyBatteryUpdate();
+    if (silent) {
+      // 页面销毁时静默断开：不推送卡片更新，保留上次有效电量
+      console.info('[OppoManager] 静默断开连接，不更新桌面卡片');
+    } else {
+      // 用户主动断开或自然断开：推送断开状态到卡片
+      this.notifyBatteryUpdate();
+    }
   }
 
   // ============== 数据解析（与 BLE 版本完全相同） ==============
@@ -893,11 +912,7 @@ export class OppoEarphoneManager {
       console.warn('[OppoManager] saveBatteryToWidget: appContext为空');
       return;
     }
-    // 断开连接时电量为-1，不更新卡片，保留最后一次有效电量
-    if (this.batteryInfo.leftBattery < 0 && this.batteryInfo.rightBattery < 0 && this.batteryInfo.caseBattery < 0) {
-      console.info('[OppoManager] 电量全部为-1(已断开)，跳过卡片更新');
-      return;
-    }
+    let isDisconnect = this.batteryInfo.leftBattery < 0 && this.batteryInfo.rightBattery < 0 && this.batteryInfo.caseBattery < 0;
     try {
       let pref = preferences.getPreferencesSync(OppoEarphoneManager.appContext, { name: 'battery_widget_data' });
       pref.putSync('leftBattery', this.batteryInfo.leftBattery);
@@ -912,7 +927,7 @@ export class OppoEarphoneManager {
       pref.putSync('lastUpdated', timeStr);
       // 必须等待 flush 完成，确保数据持久化到磁盘
       await pref.flush();
-      console.info(`[OppoManager] 电量数据已写入Preferences: L=${this.batteryInfo.leftBattery} R=${this.batteryInfo.rightBattery} C=${this.batteryInfo.caseBattery}`);
+      console.info(`[OppoManager] 电量数据已写入Preferences: L=${this.batteryInfo.leftBattery} R=${this.batteryInfo.rightBattery} C=${this.batteryInfo.caseBattery} connected=${this.isConnected} isDisconnect=${isDisconnect}`);
 
       // 从文件读取 formId 列表（由 BatteryFormAbility 写入，绕过 Preferences 跨进程缓存）
       let formIds: string[] = this.readFormIdsFromFile();
