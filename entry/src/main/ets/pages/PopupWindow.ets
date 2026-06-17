@@ -1,5 +1,7 @@
 import { OppoEarphoneManager, BatteryInfo, ConnectionStatus } from '../manager/OppoEarphoneManager';
 import { common } from '@kit.AbilityKit';
+import { fileIo } from '@kit.CoreFileKit';
+import { preferences } from '@kit.ArkData';
 
 /**
  * 弹窗界面 - 显示耳机电量
@@ -16,6 +18,7 @@ struct PopupWindow {
   @State caseCharging: boolean = false;
   @State connectionStatus: ConnectionStatus = 'disconnected';
   @State loadingText: string = '正在连接...';
+  @State popupBgImage: string = '';
 
   private manager: OppoEarphoneManager = new OppoEarphoneManager();
   private connectTimeout: number = -1;
@@ -23,6 +26,9 @@ struct PopupWindow {
 
   aboutToAppear(): void {
     console.info('[PopupWindow] 弹窗界面启动');
+
+    // 加载弹窗背景图片
+    this.loadPopupBackground();
 
     // 设置应用上下文，用于桌面卡片数据刷新
     this.manager.setContext(getContext(this) as common.UIAbilityContext);
@@ -55,14 +61,14 @@ struct PopupWindow {
           this.caseCharging = info.caseCharging;
         }
         
-        // 如果三个电量都已获取,更新提示文本并2秒后自动关闭
+        // 如果三个电量都已获取,更新提示文本并3秒后自动关闭
         if (this.leftBattery >= 0 && this.rightBattery >= 0 && this.caseBattery >= 0) {
           this.loadingText = '电量已获取';
           // 仅在首次获取全部电量时启动自动关闭定时器
           if (this.autoCloseTimeout === -1) {
             this.autoCloseTimeout = setTimeout(() => {
               this.closePopup();
-            }, 2000);
+            }, 3000);
           }
         }
       },
@@ -133,6 +139,23 @@ struct PopupWindow {
     return battery < 0 ? '--' : `${battery}%`;
   }
 
+  /**
+   * 加载弹窗背景图片
+   */
+  private loadPopupBackground(): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let pref = preferences.getPreferencesSync(context, { name: 'popup_settings' });
+      let savedPath = pref.getSync('popupBgImage', '') as string;
+      if (savedPath && fileIo.accessSync(savedPath)) {
+        // backgroundImage 需要 file:// 前缀来访问沙箱文件
+        this.popupBgImage = 'file://' + savedPath;
+      }
+    } catch (e) {
+      console.warn('[PopupWindow] 加载弹窗背景失败');
+    }
+  }
+
   build() {
     // 外层使用 Stack 布局,让内容只占据底部
     Stack() {
@@ -172,7 +195,7 @@ struct PopupWindow {
             Column() {
               Text('🎧')
                 .fontSize(22)
-              
+
               Stack() {
                 Progress({ value: this.leftBattery < 0 ? 0 : this.leftBattery, total: 100, type: ProgressType.Ring })
                   .width(70)
@@ -207,7 +230,7 @@ struct PopupWindow {
             Column() {
               Text('🎧')
                 .fontSize(22)
-              
+
               Stack() {
                 Progress({ value: this.rightBattery < 0 ? 0 : this.rightBattery, total: 100, type: ProgressType.Ring })
                   .width(70)
@@ -242,7 +265,7 @@ struct PopupWindow {
             Column() {
               Text('🔋')
                 .fontSize(22)
-              
+
               Stack() {
                 Progress({ value: this.caseBattery < 0 ? 0 : this.caseBattery, total: 100, type: ProgressType.Ring })
                   .width(70)
@@ -291,9 +314,16 @@ struct PopupWindow {
         }
         .width('85%')
         .borderRadius(20)
+        .clip(true)
+        .backgroundImage(this.popupBgImage)
+        .backgroundImageSize(ImageSize.Cover)
+        .backgroundImagePosition(Alignment.Center)
+        .backgroundColor(this.popupBgImage ? '#00000000' : '#12122E')
         .linearGradient({
           angle: 180,
-          colors: [['#1A1A3E', 0.0], ['#12122E', 1.0]]
+          colors: this.popupBgImage
+            ? [['#00000000', 0.0], ['#00000000', 1.0]]
+            : [['#1A1A3E', 0.0], ['#12122E', 1.0]]
         })
         .shadow({
           radius: 20,

@@ -1,6 +1,10 @@
 import { OppoEarphoneManager, BatteryInfo, ConnectionStatus, WearState, WearStatus, getAncModeName } from '../manager/OppoEarphoneManager';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { fileIo } from '@kit.CoreFileKit';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { preferences } from '@kit.ArkData';
+import { image } from '@kit.ImageKit';
 
 /**
  * 电量卡片子组件
@@ -123,6 +127,10 @@ struct Index {
   @State gameModeEnabled: boolean = false;
   // 空间音频
   @State spatialAudioEnabled: boolean = false;
+  @StorageProp('statusBarHeight') statusBarHeight: number = 0;
+  // 弹窗背景图片
+  @State popupBgImage: string = '';
+  @State popupBgMessage: string = '';
 
   private manager: OppoEarphoneManager = new OppoEarphoneManager();
 
@@ -202,6 +210,9 @@ struct Index {
     
     // 立即请求权限并开始监听
     this.requestBluetoothPermissionAndStartMonitor();
+
+    // 加载已保存的弹窗背景图片
+    this.loadPopupBackground();
   }
 
   aboutToDisappear(): void {
@@ -300,31 +311,119 @@ struct Index {
       this.connectionStatus === 'connected';
   }
 
+  /**
+   * 加载已保存的弹窗背景图片路径
+   */
+  private loadPopupBackground(): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let pref = preferences.getPreferencesSync(context, { name: 'popup_settings' });
+      let savedPath = pref.getSync('popupBgImage', '') as string;
+      if (savedPath && fileIo.accessSync(savedPath)) {
+        this.popupBgImage = savedPath;
+      }
+    } catch (e) {
+      console.warn('[Index] 加载弹窗背景失败');
+    }
+  }
+
+  /**
+   * 选择图片作为弹窗背景
+   */
+  private async selectPopupBackground(): Promise<void> {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let picker = new photoAccessHelper.PhotoViewPicker();
+      let result = await picker.select({
+        MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE,
+        maxSelectNumber: 1
+      });
+      if (result.photoUris && result.photoUris.length > 0) {
+        let srcUri = result.photoUris[0];
+        let destPath = context.filesDir + '/popup_bg.jpg';
+        // 通过 image 框架解码源图片并转为 JPEG，兼容 HEIC 等格式
+        let srcFile = fileIo.openSync(srcUri, fileIo.OpenMode.READ_ONLY);
+        let imgSource = image.createImageSource(srcFile.fd);
+        let packer = image.createImagePacker();
+        let destFile = fileIo.openSync(destPath, fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
+        await packer.packToFile(imgSource, destFile.fd, { format: 'image/jpeg', quality: 90 });
+        packer.release();
+        imgSource.release();
+        fileIo.closeSync(destFile.fd);
+        fileIo.closeSync(srcFile.fd);
+        // 保存到 Preferences
+        let pref = preferences.getPreferencesSync(context, { name: 'popup_settings' });
+        pref.putSync('popupBgImage', destPath);
+        pref.flush();
+        this.popupBgImage = destPath;
+        this.popupBgMessage = '弹窗背景已设置';
+        setTimeout(() => { this.popupBgMessage = ''; }, 3000);
+      }
+    } catch (err) {
+      let error = err as BusinessError;
+      console.error(`[Index] 选择图片失败: ${error.message}`);
+      this.popupBgMessage = '选择失败，请重试';
+      setTimeout(() => { this.popupBgMessage = ''; }, 3000);
+    }
+  }
+
+  /**
+   * 重置弹窗背景为默认
+   */
+  private resetPopupBackground(): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let destPath = context.filesDir + '/popup_bg.jpg';
+      // 删除沙箱中的图片文件
+      if (fileIo.accessSync(destPath)) {
+        fileIo.unlinkSync(destPath);
+      }
+      let pref = preferences.getPreferencesSync(context, { name: 'popup_settings' });
+      pref.deleteSync('popupBgImage');
+      pref.flush();
+      this.popupBgImage = '';
+      this.popupBgMessage = '已恢复默认背景';
+      setTimeout(() => { this.popupBgMessage = ''; }, 3000);
+    } catch (e) {
+      console.warn('[Index] 重置弹窗背景失败');
+    }
+  }
+
   build() {
     Column() {
-      // 标题区域
-      this.TitleSection();
+      Scroll() {
+        Column() {
+          // 标题区域
+          this.TitleSection();
 
-      // 连接状态区域
-      this.StatusSection();
+          // 连接状态区域
+          this.StatusSection();
 
-      // 电量卡片区域
-      this.BatterySection();
+          // 电量卡片区域
+          this.BatterySection();
 
-      // 设备状态区域 (ANC/佩戴/游戏模式)
-      this.DeviceStatusSection();
+          // 设备状态区域 (ANC/佩戴/游戏模式)
+          this.DeviceStatusSection();
 
-      // 操作按钮区域
-      this.ActionSection();
+          // 操作按钮区域
+          this.ActionSection();
 
-      // HEX原始数据区域
-      this.RawDataSection();
+          // HEX原始数据区域
+          this.RawDataSection();
 
-      // 底部提示
-      this.TipSection();
+          // 底部提示
+          this.TipSection();
+        }
+        .width('100%')
+        .padding({ top: this.statusBarHeight })
+      }
+      .layoutWeight(1)
+      .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
     }
     .width('100%')
     .height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .linearGradient({
       angle: 180,
       colors: [['#0D0D1A', 0.0], ['#1A1A3E', 0.5], ['#0D0D2B', 1.0]]
@@ -345,7 +444,7 @@ struct Index {
         .fontColor('#8888AA')
         .margin({ top: 6 })
     }
-    .margin({ top: 60 })
+    .margin({ top: 12 })
     .width('100%')
     .alignItems(HorizontalAlign.Center)
   }
@@ -467,6 +566,47 @@ struct Index {
           .fontSize(13)
           .fontColor('#FF6B6B')
           .margin({ top: 12 })
+      }
+
+      // 设置弹窗背景图片按钮
+      Button() {
+        Row() {
+          Text('🖼️')
+            .fontSize(18)
+          Text(this.popupBgImage ? '  更换弹窗背景' : '  设置弹窗背景')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+        }
+      }
+      .width('80%')
+      .height(48)
+      .backgroundColor('#1E1E3E')
+      .borderRadius(24)
+      .border({ width: 1, color: '#2A2A5E' })
+      .margin({ top: 16 })
+      .onClick(() => {
+        this.selectPopupBackground();
+      })
+
+      // 重置弹窗背景按钮
+      if (this.popupBgImage) {
+        Button('恢复默认背景')
+          .fontSize(13)
+          .fontColor('#8888AA')
+          .height(36)
+          .backgroundColor('#00000000')
+          .margin({ top: 8 })
+          .onClick(() => {
+            this.resetPopupBackground();
+          })
+      }
+
+      // 背景设置提示
+      if (this.popupBgMessage) {
+        Text(this.popupBgMessage)
+          .fontSize(12)
+          .fontColor('#4CAF50')
+          .margin({ top: 6 })
       }
     }
     .margin({ top: 40 })
@@ -899,7 +1039,7 @@ struct Index {
         .margin({ bottom: 30 })
     }
     .width('100%')
-    .layoutWeight(1)
     .alignItems(HorizontalAlign.Center)
+    .margin({ bottom: 20 })
   }
 }

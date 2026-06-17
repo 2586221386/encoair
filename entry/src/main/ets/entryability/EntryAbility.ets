@@ -59,6 +59,9 @@ export default class EntryAbility extends UIAbility {
           return;
         }
         hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
+
+        // 设置主窗口全屏沉浸式，背景延伸到状态栏和导航栏
+        this.setupMainWindowFullScreen(windowStage);
       });
     }
   }
@@ -136,6 +139,33 @@ export default class EntryAbility extends UIAbility {
     }
     
     return false;
+  }
+
+  /**
+   * 设置主窗口全屏沉浸式
+   * 背景延伸到状态栏和导航栏区域，状态栏/导航栏透明
+   */
+  private setupMainWindowFullScreen(windowStage: window.WindowStage): void {
+    try {
+      let windowClass = windowStage.getMainWindowSync();
+      // 全屏布局，内容延伸到状态栏和导航栏
+      windowClass.setWindowLayoutFullScreen(true);
+      // 状态栏和导航栏透明
+      let sysBarProps: window.SystemBarProperties = {
+        statusBarColor: '#00000000',
+        navigationBarColor: '#00000000',
+        statusBarContentColor: '#FFFFFF',
+        navigationBarContentColor: '#FFFFFF'
+      };
+      windowClass.setWindowSystemBarProperties(sysBarProps);
+      // 获取状态栏高度，存入AppStorage供UI使用
+      let avoidArea = windowClass.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      let topHeight = px2vp(avoidArea.topRect.height);
+      AppStorage.setOrCreate<number>('statusBarHeight', topHeight);
+      hilog.info(DOMAIN, 'testTag', '主窗口全屏沉浸式设置成功, 状态栏高度: %{public}s', String(topHeight));
+    } catch (error) {
+      hilog.error(DOMAIN, 'testTag', '主窗口全屏设置失败: %{public}s', JSON.stringify(error));
+    }
   }
 
   /**
