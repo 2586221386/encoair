@@ -21,6 +21,9 @@
           ],
           "when": "inuse"
         }
+      },
+      {
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING"
       }
     ],
     "abilities": [
@@ -33,6 +36,9 @@
         "startWindowIcon": "$media:startIcon",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
+        "backgroundModes": [
+          "bluetoothInteraction"
+        ],
         "skills": [
           {
             "entities": [

@@ -2,8 +2,10 @@ import { ble, socket, connection } from '@kit.ConnectivityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { preferences } from '@kit.ArkData';
 import { formProvider, formBindingData } from '@kit.FormKit';
-import { common } from '@kit.AbilityKit';
+import { common, wantAgent, WantAgent, Want } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
+import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
+import { notificationManager } from '@kit.NotificationKit';
 
 /**
  * 桌面卡片电量数据结构
@@ -94,6 +96,10 @@ export class OppoEarphoneManager {
   // 应用前后台状态（后台任务跳过前台运行时的刷新）
   static isAppForeground: boolean = false;
 
+  // 后台保活状态
+  private isBackgroundTaskRunning: boolean = false;
+  private static readonly NOTIFICATION_ID: number = 9001;
+
   // OPPO Enco Air5 Pro RFCOMM UUID（与安卓 OppoPods 项目一致）
   private RFCOMM_UUID: string = '0000079A-D102-11E1-9B23-00025B00A5A5';
   private TARGET_DEVICE_NAME: string = 'OPPO Enco Air5 Pro';
@@ -164,6 +170,27 @@ export class OppoEarphoneManager {
    */
   setContext(ctx: common.Context): void {
     OppoEarphoneManager.appContext = ctx;
+  }
+
+  /**
+   * 获取当前连接状态
+   */
+  getIsConnected(): boolean {
+    return this.isConnected;
+  }
+
+  /**
+   * 获取当前电量快照
+   */
+  getCurrentBatteryInfo(): BatteryInfo {
+    return {
+      leftBattery: this.batteryInfo.leftBattery,
+      leftCharging: this.batteryInfo.leftCharging,
+      rightBattery: this.batteryInfo.rightBattery,
+      rightCharging: this.batteryInfo.rightCharging,
+      caseBattery: this.batteryInfo.caseBattery,
+      caseCharging: this.batteryInfo.caseCharging
+    };
   }
 
   /**
@@ -575,6 +602,8 @@ export class OppoEarphoneManager {
 
   private notifyAncUpdate(mode: number): void {
     if (this.ancCallback) this.ancCallback(mode);
+    // 更新常驻通知中的ANC状态
+    if (this.isBackgroundTaskRunning) this.publishOrUpdateNotification();
   }
 
   private notifyWearUpdate(wear: WearStatus): void {
@@ -655,6 +684,8 @@ export class OppoEarphoneManager {
     this.stopContinuousMonitor();
     this.stopPeriodicQuery();
     this.cancelReconnect();
+    // 停止后台保活 + 移除通知
+    this.stopBackgroundService();
     this.cleanup(silent);
     this.notifyStatus('disconnected');
   }
@@ -741,6 +772,9 @@ export class OppoEarphoneManager {
 
         // SPP RFCOMM 连接成功即可通信，直接设为 subscribed（无需GATT服务发现）
         this.notifyStatus('subscribed');
+
+        // 启动后台保活 + 常驻通知
+        this.startBackgroundService();
 
         // 连接成功后启动查询（参考安卓 connectRfcomm 流程）
         setTimeout(() => {
@@ -928,6 +962,8 @@ export class OppoEarphoneManager {
     }
     // 同步写入Preferences并刷新桌面卡片
     this.saveBatteryToWidget();
+    // 更新常驻通知中的电量
+    if (this.isBackgroundTaskRunning) this.publishOrUpdateNotification();
   }
 
   /**
@@ -1355,5 +1391,126 @@ export class OppoEarphoneManager {
     }
     this.isConnected = false;
     console.info('[OppoManager] 后台静默断开完成');
+  }
+
+  // ============== 后台保活 + 常驻通知 ==============
+
+  /**
+   * 启动后台保活任务并发布常驻通知
+   * 连接成功后调用，确保应用退后台后SPP连接不断
+   * 仅在用户开启“常驻通知”开关时执行
+   */
+  startBackgroundService(): void {
+    if (this.isBackgroundTaskRunning || !OppoEarphoneManager.appContext) return;
+    // 检查用户是否开启了常驻通知开关
+    try {
+      let pref = preferences.getPreferencesSync(OppoEarphoneManager.appContext, { name: 'app_settings' });
+      let enabled = pref.getSync('persistentNotifyEnabled', false) as boolean;
+      if (!enabled) {
+        console.info('[OppoManager] 常驻通知未开启，跳过后台保活');
+        return;
+      }
+    } catch (e) {
+      console.warn('[OppoManager] 读取通知设置失败');
+      return;
+    }
+    try {
+      let context = OppoEarphoneManager.appContext;
+      // 创建 wantAgent，点击通知时打开主界面
+      let wantAgentInfo: wantAgent.WantAgentInfo = {
+        wants: [{
+          bundleName: 'com.hzx.encoair',
+          abilityName: 'EntryAbility'
+        } as Want],
+        actionType: wantAgent.OperationType.START_ABILITY,
+        requestCode: 0,
+        wantAgentFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+      };
+      wantAgent.getWantAgent(wantAgentInfo).then((agent: WantAgent) => {
+        backgroundTaskManager.startBackgroundRunning(context,
+          backgroundTaskManager.BackgroundMode.BLUETOOTH_INTERACTION, agent)
+          .then(() => {
+            this.isBackgroundTaskRunning = true;
+            console.info('[OppoManager] 后台保活任务已启动');
+            this.publishOrUpdateNotification();
+          })
+          .catch((err: BusinessError) => {
+            console.error(`[OppoManager] 启动后台任务失败: ${err.code} ${err.message}`);
+          });
+      });
+    } catch (err) {
+      let error = err as BusinessError;
+      console.error(`[OppoManager] startBackgroundService 异常: ${error.message}`);
+    }
+  }
+
+  /**
+   * 停止后台保活任务并移除通知
+   * 断开连接时调用
+   */
+  stopBackgroundService(): void {
+    if (!this.isBackgroundTaskRunning || !OppoEarphoneManager.appContext) return;
+    try {
+      backgroundTaskManager.stopBackgroundRunning(OppoEarphoneManager.appContext)
+        .then(() => {
+          this.isBackgroundTaskRunning = false;
+          console.info('[OppoManager] 后台保活任务已停止');
+        })
+        .catch((err: BusinessError) => {
+          console.error(`[OppoManager] 停止后台任务失败: ${err.code} ${err.message}`);
+        });
+      // 取消通知
+      notificationManager.cancel(OppoEarphoneManager.NOTIFICATION_ID);
+    } catch (err) {
+      let error = err as BusinessError;
+      console.error(`[OppoManager] stopBackgroundService 异常: ${error.message}`);
+    }
+  }
+
+  /**
+   * 发布或更新常驻通知
+   * 显示电量和ANC状态
+   */
+  publishOrUpdateNotification(): void {
+    // 先检查通知权限是否仍然有效
+    try {
+      if (!notificationManager.isNotificationEnabledSync()) {
+        console.warn('[OppoManager] 通知权限已被禁用，停止后台服务');
+        this.stopBackgroundService();
+        return;
+      }
+    } catch (e) {
+      // 检查失败时继续尝试发布
+    }
+    try {
+      let ancName = getAncModeName(this.currentAncMode);
+      let l = this.batteryInfo.leftBattery >= 0 ? `${this.batteryInfo.leftBattery}%` : '--';
+      let r = this.batteryInfo.rightBattery >= 0 ? `${this.batteryInfo.rightBattery}%` : '--';
+      let c = this.batteryInfo.caseBattery >= 0 ? `${this.batteryInfo.caseBattery}%` : '--';
+      let chargingL = this.batteryInfo.leftCharging ? '⚡' : '';
+      let chargingR = this.batteryInfo.rightCharging ? '⚡' : '';
+      let chargingC = this.batteryInfo.caseCharging ? '⚡' : '';
+
+      let title = `Air5 Pro 已连接 | ANC: ${ancName}`;
+      let text = `左耳 ${l}${chargingL}  右耳 ${r}${chargingR}  仓 ${c}${chargingC}`;
+
+      let notification: notificationManager.NotificationRequest = {
+        id: OppoEarphoneManager.NOTIFICATION_ID,
+        content: {
+          notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
+          normal: {
+            title: title,
+            text: text,
+            additionalText: 'Air5 Pro 耳机助手'
+          }
+        },
+        isOngoing: true,
+        isAlertOnce: true
+      };
+      notificationManager.publish(notification);
+    } catch (err) {
+      let error = err as BusinessError;
+      console.error(`[OppoManager] 发布通知失败: ${error.message}`);
+    }
   }
 }

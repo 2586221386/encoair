@@ -1,10 +1,12 @@
 import { OppoEarphoneManager, BatteryInfo, ConnectionStatus, WearState, WearStatus, getAncModeName } from '../manager/OppoEarphoneManager';
-import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
+import { abilityAccessCtrl, common, Permissions, Want } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { preferences } from '@kit.ArkData';
 import { image } from '@kit.ImageKit';
+import { formProvider } from '@kit.FormKit';
+import { notificationManager } from '@kit.NotificationKit';
 
 /**
  * 电量卡片子组件
@@ -131,8 +133,12 @@ struct Index {
   // 弹窗背景图片
   @State popupBgImage: string = '';
   @State popupBgMessage: string = '';
+  // 通知管理
+  @State persistentNotifyEnabled: boolean = false;
+  // TabBar
+  @State currentIndex: number = 0;
 
-  private manager: OppoEarphoneManager = new OppoEarphoneManager();
+  private manager: OppoEarphoneManager = OppoEarphoneManager.getInstance();
 
   aboutToAppear(): void {
     // 设置应用上下文，用于桌面卡片数据刷新
@@ -213,6 +219,9 @@ struct Index {
 
     // 加载已保存的弹窗背景图片
     this.loadPopupBackground();
+
+    // 加载通知设置
+    this.loadNotificationSettings();
   }
 
   aboutToDisappear(): void {
@@ -270,7 +279,7 @@ struct Index {
       case 'disconnected':
         return '正在监听蓝牙设备...';
       case 'scanning':
-        return '正在扫描OPPO耳机...';
+        return '正在扫描耳机...';
       case 'connecting':
         return '正在连接...';
       case 'connected':
@@ -328,6 +337,93 @@ struct Index {
   }
 
   /**
+   * 加载通知设置
+   */
+  private loadNotificationSettings(): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let pref = preferences.getPreferencesSync(context, { name: 'app_settings' });
+      this.persistentNotifyEnabled = pref.getSync('persistentNotifyEnabled', false) as boolean;
+      // 如果开关打开且已连接，启动后台服务
+      if (this.persistentNotifyEnabled && this.manager.getIsConnected()) {
+        this.manager.startBackgroundService();
+      }
+    } catch (e) {
+      console.warn('[Index] 加载通知设置失败');
+    }
+  }
+
+  /**
+   * 切换常驻通知开关
+   */
+  private togglePersistentNotification(isOn: boolean): void {
+    if (isOn) {
+      // 开启：先检查通知权限（使用同步版本，避免异步缓存问题）
+      try {
+        let enabled = notificationManager.isNotificationEnabledSync();
+        if (!enabled) {
+          // 未授权，弹出系统申请对话框
+          this.requestNotificationPermission();
+          return;
+        }
+        // 已授权，直接启动
+        this.persistentNotifyEnabled = true;
+        this.saveNotifySetting(true);
+        if (this.manager.getIsConnected()) {
+          this.manager.startBackgroundService();
+        }
+      } catch (err) {
+        let error = err as BusinessError;
+        console.error(`[Index] 检查通知权限失败: ${error.message}`);
+        // 检查失败时不默认开启，让用户重试
+      }
+    } else {
+      // 关闭
+      this.persistentNotifyEnabled = false;
+      this.saveNotifySetting(false);
+      this.manager.stopBackgroundService();
+    }
+  }
+
+  /**
+   * 保存通知设置到 Preferences
+   */
+  private saveNotifySetting(enabled: boolean): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let pref = preferences.getPreferencesSync(context, { name: 'app_settings' });
+      pref.putSync('persistentNotifyEnabled', enabled);
+      pref.flush();
+    } catch (e) {
+      console.warn('[Index] 保存通知设置失败');
+    }
+  }
+
+  /**
+   * 申请通知权限
+   */
+  private async requestNotificationPermission(): Promise<void> {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      await notificationManager.requestEnableNotification(context);
+      // 用户授权成功
+      this.persistentNotifyEnabled = true;
+      this.saveNotifySetting(true);
+      if (this.manager.getIsConnected()) {
+        this.manager.startBackgroundService();
+      }
+    } catch (err) {
+      let error = err as BusinessError;
+      if (error.code === 1600004) {
+        // 用户拒绝授权
+        this.persistentNotifyEnabled = false;
+      } else {
+        console.error(`[Index] 请求通知权限失败: ${error.code} ${error.message}`);
+      }
+    }
+  }
+
+  /**
    * 选择图片作为弹窗背景
    */
   private async selectPopupBackground(): Promise<void> {
@@ -368,6 +464,47 @@ struct Index {
   }
 
   /**
+   * 预览弹窗
+   */
+  private previewPopup(): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let want: Want = {
+        bundleName: 'com.hzx.encoair',
+        abilityName: 'EntryAbility',
+        parameters: {
+          'show_popup': true as Object
+        } as Record<string, Object>
+      };
+      context.startAbility(want);
+    } catch (err) {
+      let error = err as BusinessError;
+      console.error(`[Index] 预览弹窗失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 打开系统桌面卡片选择器
+   */
+  private openWidgetPicker(): void {
+    let want: Want = {
+      bundleName: 'com.hzx.encoair',
+      abilityName: 'BatteryFormAbility',
+      parameters: {
+        'ohos.extra.param.key.form_dimension': 2 as Object,
+        'ohos.extra.param.key.form_name': 'BatteryWidget' as Object,
+        'ohos.extra.param.key.module_name': 'entry' as Object
+      } as Record<string, Object>
+    };
+    try {
+      formProvider.openFormManager(want);
+    } catch (err) {
+      let error = err as BusinessError;
+      console.error(`[Index] 打开卡片管理器失败: ${error.message}`);
+    }
+  }
+
+  /**
    * 重置弹窗背景为默认
    */
   private resetPopupBackground(): void {
@@ -390,37 +527,48 @@ struct Index {
   }
 
   build() {
-    Column() {
-      Scroll() {
+    Tabs({ barPosition: BarPosition.End, index: this.currentIndex }) {
+      TabContent() {
         Column() {
-          // 标题区域
-          this.TitleSection();
+          Scroll() {
+            Column() {
+              // 标题区域
+              this.TitleSection();
 
-          // 连接状态区域
-          this.StatusSection();
+              // 连接状态区域
+              this.StatusSection();
 
-          // 电量卡片区域
-          this.BatterySection();
+              // 电量卡片区域
+              this.BatterySection();
 
-          // 设备状态区域 (ANC/佩戴/游戏模式)
-          this.DeviceStatusSection();
+              // 设备状态区域 (ANC/佩戴/游戏模式)
+              this.DeviceStatusSection();
 
-          // 操作按钮区域
-          this.ActionSection();
+              // 操作按钮区域
+              this.ActionSection();
 
-          // HEX原始数据区域
-          this.RawDataSection();
-
-          // 底部提示
-          this.TipSection();
+              // 底部提示
+              this.TipSection();
+            }
+            .width('100%')
+            .padding({ top: this.statusBarHeight })
+          }
+          .layoutWeight(1)
+          .scrollBar(BarState.Off)
+          .edgeEffect(EdgeEffect.Spring)
         }
         .width('100%')
-        .padding({ top: this.statusBarHeight })
+        .height('100%')
       }
-      .layoutWeight(1)
-      .scrollBar(BarState.Off)
-      .edgeEffect(EdgeEffect.Spring)
+      .tabBar(this.TabBarItem('🏠', '主页', 0))
+
+      TabContent() {
+        this.SettingsPage()
+      }
+      .tabBar(this.TabBarItem('⚙️', '设置', 1))
     }
+    .barHeight(56)
+    .barMode(BarMode.Fixed)
     .width('100%')
     .height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
@@ -428,18 +576,21 @@ struct Index {
       angle: 180,
       colors: [['#0D0D1A', 0.0], ['#1A1A3E', 0.5], ['#0D0D2B', 1.0]]
     })
+    .onChange((index: number) => {
+      this.currentIndex = index;
+    })
   }
 
   // ============== 标题区域 ==============
   @Builder TitleSection() {
     Column() {
-      Text('OPPO Enco Air5 Pro')
+      Text('Air5 Pro')
         .fontSize(26)
         .fontWeight(FontWeight.Bold)
         .fontColor('#FFFFFF')
         .letterSpacing(1)
 
-      Text('蓝牙电量监控')
+      Text('耳机助手')
         .fontSize(16)
         .fontColor('#8888AA')
         .margin({ top: 6 })
@@ -566,47 +717,6 @@ struct Index {
           .fontSize(13)
           .fontColor('#FF6B6B')
           .margin({ top: 12 })
-      }
-
-      // 设置弹窗背景图片按钮
-      Button() {
-        Row() {
-          Text('🖼️')
-            .fontSize(18)
-          Text(this.popupBgImage ? '  更换弹窗背景' : '  设置弹窗背景')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-        }
-      }
-      .width('80%')
-      .height(48)
-      .backgroundColor('#1E1E3E')
-      .borderRadius(24)
-      .border({ width: 1, color: '#2A2A5E' })
-      .margin({ top: 16 })
-      .onClick(() => {
-        this.selectPopupBackground();
-      })
-
-      // 重置弹窗背景按钮
-      if (this.popupBgImage) {
-        Button('恢复默认背景')
-          .fontSize(13)
-          .fontColor('#8888AA')
-          .height(36)
-          .backgroundColor('#00000000')
-          .margin({ top: 8 })
-          .onClick(() => {
-            this.resetPopupBackground();
-          })
-      }
-
-      // 背景设置提示
-      if (this.popupBgMessage) {
-        Text(this.popupBgMessage)
-          .fontSize(12)
-          .fontColor('#4CAF50')
-          .margin({ top: 6 })
       }
     }
     .margin({ top: 40 })
@@ -1024,7 +1134,7 @@ struct Index {
   @Builder TipSection() {
     Column() {
       if (this.connectionStatus === 'disconnected' || this.connectionStatus === 'scanning') {
-        Text('已开启自动监听,检测到OPPO耳机会自动连接')
+        Text('已开启自动监听,检测到耳机会自动连接')
           .fontSize(12)
           .fontColor('#6666AA')
           .textAlign(TextAlign.Center)
@@ -1033,7 +1143,7 @@ struct Index {
 
       Blank()
 
-      Text('OPPO Enco Air5 Pro 专用电量监控')
+      Text('Air5 Pro 耳机助手')
         .fontSize(11)
         .fontColor('#444466')
         .margin({ bottom: 30 })
@@ -1041,5 +1151,234 @@ struct Index {
     .width('100%')
     .alignItems(HorizontalAlign.Center)
     .margin({ bottom: 20 })
+  }
+
+  // ============== TabBar 按钮 ==============
+  @Builder TabBarItem(icon: string, title: string, index: number) {
+    Column() {
+      Text(icon)
+        .fontSize(22)
+      Text(title)
+        .fontSize(11)
+        .fontColor(this.currentIndex === index ? '#FFFFFF' : '#666688')
+        .margin({ top: 2 })
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+  }
+
+  // ============== 设置页面 ==============
+  @Builder SettingsPage() {
+    Scroll() {
+      Column() {
+        // 标题
+        Text('设置')
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFF')
+          .margin({ top: 20 })
+
+        // ====== 通知管理 ======
+        Column() {
+          Row() {
+            Text('🔔')
+              .fontSize(18)
+            Text(' 通知管理')
+              .fontSize(14)
+              .fontColor('#AAAACC')
+              .margin({ left: 6 })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+
+          Row() {
+            Text('常驻通知显示电量')
+              .fontSize(14)
+              .fontColor('#EEEEFF')
+              .layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.persistentNotifyEnabled })
+              .selectedColor('#2A5CFF')
+              .switchPointColor('#FFFFFF')
+              .onChange((isOn: boolean) => {
+                this.togglePersistentNotification(isOn);
+              })
+          }
+          .width('85%')
+          .height(44)
+          .padding({ left: 12, right: 4 })
+
+          Text('开启后在状态栏显示电量和ANC状态，并保持后台连接')
+            .fontSize(11)
+            .fontColor('#666688')
+            .width('85%')
+            .margin({ bottom: 12 })
+        }
+        .width('85%')
+        .borderRadius(16)
+        .backgroundColor('#12122E')
+        .border({ width: 1, color: '#2A2A5E' })
+        .margin({ top: 24 })
+        .alignItems(HorizontalAlign.Center)
+
+        // ====== 弹窗背景设置 ======
+        Column() {
+          Row() {
+            Text('🖼️')
+              .fontSize(18)
+            Text(' 弹窗背景')
+              .fontSize(14)
+              .fontColor('#AAAACC')
+              .margin({ left: 6 })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+
+          Button() {
+            Row() {
+              Text('🖼️')
+                .fontSize(16)
+              Text(this.popupBgImage ? '  更换弹窗背景' : '  设置弹窗背景')
+                .fontSize(14)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#FFFFFF')
+            }
+          }
+          .width('85%')
+          .height(44)
+          .backgroundColor('#1E1E3E')
+          .borderRadius(22)
+          .border({ width: 1, color: '#2A2A5E' })
+          .onClick(() => {
+            this.selectPopupBackground();
+          })
+
+          Button('预览弹窗')
+            .fontSize(14)
+            .fontColor('#FFFFFF')
+            .width('85%')
+            .height(40)
+            .backgroundColor('#2A5CFF')
+            .borderRadius(20)
+            .margin({ top: 10 })
+            .onClick(() => {
+              this.previewPopup();
+            })
+
+          if (this.popupBgImage) {
+            Button('恢复默认背景')
+              .fontSize(13)
+              .fontColor('#8888AA')
+              .height(34)
+              .backgroundColor('#00000000')
+              .margin({ top: 8 })
+              .onClick(() => {
+                this.resetPopupBackground();
+              })
+          }
+
+          if (this.popupBgMessage) {
+            Text(this.popupBgMessage)
+              .fontSize(12)
+              .fontColor('#4CAF50')
+              .margin({ top: 6 })
+          }
+        }
+        .width('85%')
+        .borderRadius(16)
+        .backgroundColor('#12122E')
+        .border({ width: 1, color: '#2A2A5E' })
+        .margin({ top: 24 })
+        .alignItems(HorizontalAlign.Center)
+        .padding({ bottom: 16 })
+
+        // ====== 桌面组件 ======
+        Column() {
+          Row() {
+            Text('📱')
+              .fontSize(18)
+            Text(' 桌面组件')
+              .fontSize(14)
+              .fontColor('#AAAACC')
+              .margin({ left: 6 })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+
+          Text('将电量卡片添加到桌面或负一屏，随时查看耳机电量，数据刷新会有延迟')
+            .fontSize(12)
+            .fontColor('#666688')
+            .width('85%')
+            .margin({ bottom: 12 })
+
+          Button('添加桌面卡片')
+            .fontSize(14)
+            .fontColor('#FFFFFF')
+            .width('85%')
+            .height(40)
+            .backgroundColor('#2A5CFF')
+            .borderRadius(20)
+            .onClick(() => {
+              this.openWidgetPicker();
+            })
+        }
+        .width('85%')
+        .borderRadius(16)
+        .backgroundColor('#12122E')
+        .border({ width: 1, color: '#2A2A5E' })
+        .margin({ top: 20 })
+        .alignItems(HorizontalAlign.Center)
+        .padding({ bottom: 16 })
+
+        // ====== HEX 原始数据 ======
+        Column() {
+          // 标题行，可点击展开/收起
+          Row() {
+            Text('HEX 原始数据')
+              .fontSize(14)
+              .fontColor('#AAAACC')
+              .fontWeight(FontWeight.Medium)
+
+            Blank()
+
+            Text(this.showRawData ? '收起 ▲' : '展开 ▼')
+              .fontSize(12)
+              .fontColor('#6666AA')
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+          .onClick(() => {
+            this.showRawData = !this.showRawData;
+          })
+
+          if (this.showRawData) {
+            Scroll() {
+              Text(this.rawHexLog || '等待数据...')
+                .fontSize(11)
+                .fontColor('#88AACC')
+                .fontFamily('monospace')
+                .width('100%')
+                .copyOption(CopyOptions.LocalDevice)
+            }
+            .width('100%')
+            .height(120)
+            .padding({ left: 16, right: 16, top: 4, bottom: 8 })
+          }
+        }
+        .width('85%')
+        .borderRadius(16)
+        .backgroundColor('#12122E')
+        .border({ width: 1, color: '#2A2A5E' })
+        .margin({ top: 20 })
+        .clip(true)
+      }
+      .width('100%')
+      .padding({ top: this.statusBarHeight, bottom: 20 })
+      .alignItems(HorizontalAlign.Center)
+    }
+    .layoutWeight(1)
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
   }
 }

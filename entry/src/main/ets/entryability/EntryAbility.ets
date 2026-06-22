@@ -9,7 +9,9 @@ import { OppoEarphoneManager } from '../manager/OppoEarphoneManager';
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
+  static previewSubWindow: window.Window | null = null;
   private privateLaunchWant: Want | null = null;
+  private windowStage: window.WindowStage | null = null;
   
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
@@ -33,6 +35,9 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
+
+    // 保存 windowStage 引用，供 onNewWant 使用
+    this.windowStage = windowStage;
 
     // 判断启动来源:如果是被外部应用(如"智慧生活")唤醒,显示弹窗;否则显示主界面
     let isExternalWake = this.checkIfExternalWake();
@@ -85,8 +90,50 @@ export default class EntryAbility extends UIAbility {
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, 'testTag', 'onNewWant: %{public}s', JSON.stringify(want));
-    // 更新want并重新判断是否显示弹窗
     this.privateLaunchWant = want;
+
+    // 检测是否为弹窗预览请求
+    if (want.parameters) {
+      let params = want.parameters as Record<string, Object>;
+      if (params['show_popup'] === true && this.windowStage) {
+        hilog.info(DOMAIN, 'testTag', 'onNewWant 检测到弹窗请求，创建子窗口');
+        this.showPopupPreview();
+      }
+    }
+  }
+
+  /**
+   * 从已运行的主界面弹出弹窗预览子窗口
+   */
+  private showPopupPreview(): void {
+    if (!this.windowStage) return;
+    try {
+      this.windowStage.createSubWindow('popup_preview', (err, subWindow) => {
+        if (err.code) {
+          hilog.error(DOMAIN, 'testTag', '创建子窗口失败: %{public}s', JSON.stringify(err));
+          return;
+        }
+        // 先加载内容，再配置窗口属性，最后显示
+        subWindow.loadContent('pages/PopupWindow', (loadErr) => {
+          if (loadErr.code) {
+            hilog.error(DOMAIN, 'testTag', '加载弹窗页面失败: %{public}s', JSON.stringify(loadErr));
+            return;
+          }
+          try {
+            subWindow.setWindowBackgroundColor('#00000000');
+            subWindow.setWindowLayoutFullScreen(true);
+            subWindow.showWindow();
+            // 保存子窗口引用，供 PopupWindow 关闭时使用
+            EntryAbility.previewSubWindow = subWindow;
+            hilog.info(DOMAIN, 'testTag', '弹窗预览子窗口已显示');
+          } catch (showErr) {
+            hilog.error(DOMAIN, 'testTag', '显示子窗口失败: %{public}s', JSON.stringify(showErr));
+          }
+        });
+      });
+    } catch (error) {
+      hilog.error(DOMAIN, 'testTag', 'showPopupPreview 异常: %{public}s', JSON.stringify(error));
+    }
   }
 
   /**

@@ -45,7 +45,7 @@ struct BatteryWidgetPage {
       Column() {
       // 顶部标题
       Row() {
-        Text('OPPO Enco Air5 Pro')
+        Text('Air5 Pro')
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
           .fontColor('#333333')

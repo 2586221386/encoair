@@ -1,7 +1,8 @@
 import { OppoEarphoneManager, BatteryInfo, ConnectionStatus } from '../manager/OppoEarphoneManager';
-import { common } from '@kit.AbilityKit';
+import { common, Want } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { preferences } from '@kit.ArkData';
+import EntryAbility from '../entryability/EntryAbility';
 
 /**
  * 弹窗界面 - 显示耳机电量
@@ -20,7 +21,7 @@ struct PopupWindow {
   @State loadingText: string = '正在连接...';
   @State popupBgImage: string = '';
 
-  private manager: OppoEarphoneManager = new OppoEarphoneManager();
+  private manager: OppoEarphoneManager = OppoEarphoneManager.getInstance();
   private connectTimeout: number = -1;
   private autoCloseTimeout: number = -1;
 
@@ -30,82 +31,88 @@ struct PopupWindow {
     // 加载弹窗背景图片
     this.loadPopupBackground();
 
-    // 设置应用上下文，用于桌面卡片数据刷新
+    // 设置应用上下文
     this.manager.setContext(getContext(this) as common.UIAbilityContext);
-    
-    // 设置回调
-    this.manager.setCallbacks(
-      (info: BatteryInfo) => {
-        console.info(`[PopupWindow] 收到电量更新: 左=${info.leftBattery}, 右=${info.rightBattery}, 仓=${info.caseBattery}`);
-        // 断开连接时电量为-1，直接重置
-        if (info.leftBattery < 0 && info.rightBattery < 0 && info.caseBattery < 0) {
-          this.leftBattery = -1;
-          this.rightBattery = -1;
-          this.caseBattery = -1;
-          this.leftCharging = false;
-          this.rightCharging = false;
-          this.caseCharging = false;
-          return;
-        }
-        // 更新电量数据
-        if (info.leftBattery >= 0 && info.leftBattery % 10 === 0) {
-          this.leftBattery = info.leftBattery;
-          this.leftCharging = info.leftCharging;
-        }
-        if (info.rightBattery >= 0 && info.rightBattery % 10 === 0) {
-          this.rightBattery = info.rightBattery;
-          this.rightCharging = info.rightCharging;
-        }
-        if (info.caseBattery >= 0 && info.caseBattery % 10 === 0) {
-          this.caseBattery = info.caseBattery;
-          this.caseCharging = info.caseCharging;
-        }
-        
-        // 如果三个电量都已获取,更新提示文本并3秒后自动关闭
-        if (this.leftBattery >= 0 && this.rightBattery >= 0 && this.caseBattery >= 0) {
-          this.loadingText = '电量已获取';
-          // 仅在首次获取全部电量时启动自动关闭定时器
-          if (this.autoCloseTimeout === -1) {
-            this.autoCloseTimeout = setTimeout(() => {
-              this.closePopup();
-            }, 3000);
+
+    // 检查是否已连接（从主页面共享连接）
+    if (this.manager.getIsConnected()) {
+      console.info('[PopupWindow] 检测到已有连接，直接读取电量快照');
+      this.connectionStatus = 'subscribed';
+      let info = this.manager.getCurrentBatteryInfo();
+      this.leftBattery = info.leftBattery;
+      this.leftCharging = info.leftCharging;
+      this.rightBattery = info.rightBattery;
+      this.rightCharging = info.rightCharging;
+      this.caseBattery = info.caseBattery;
+      this.caseCharging = info.caseCharging;
+      this.loadingText = '已连接';
+      // 不替换回调、不重新连接，避免影响主页面
+    } else {
+      // 未连接（外部唤醒场景），走完整连接流程
+      this.manager.setCallbacks(
+        (info: BatteryInfo) => {
+          console.info(`[PopupWindow] 收到电量更新: 左=${info.leftBattery}, 右=${info.rightBattery}, 仓=${info.caseBattery}`);
+          if (info.leftBattery < 0 && info.rightBattery < 0 && info.caseBattery < 0) {
+            this.leftBattery = -1;
+            this.rightBattery = -1;
+            this.caseBattery = -1;
+            this.leftCharging = false;
+            this.rightCharging = false;
+            this.caseCharging = false;
+            return;
+          }
+          if (info.leftBattery >= 0 && info.leftBattery % 10 === 0) {
+            this.leftBattery = info.leftBattery;
+            this.leftCharging = info.leftCharging;
+          }
+          if (info.rightBattery >= 0 && info.rightBattery % 10 === 0) {
+            this.rightBattery = info.rightBattery;
+            this.rightCharging = info.rightCharging;
+          }
+          if (info.caseBattery >= 0 && info.caseBattery % 10 === 0) {
+            this.caseBattery = info.caseBattery;
+            this.caseCharging = info.caseCharging;
+          }
+          if (this.leftBattery >= 0 && this.rightBattery >= 0 && this.caseBattery >= 0) {
+            this.loadingText = '电量已获取';
+            if (this.autoCloseTimeout === -1) {
+              this.autoCloseTimeout = setTimeout(() => {
+                this.closePopup();
+              }, 3000);
+            }
+          }
+        },
+        (status: ConnectionStatus) => {
+          this.connectionStatus = status;
+          console.info(`[PopupWindow] 连接状态: ${status}`);
+          switch (status) {
+            case 'scanning':
+              this.loadingText = '正在扫描耳机...';
+              break;
+            case 'connecting':
+              this.loadingText = '正在连接...';
+              break;
+            case 'connected':
+              this.loadingText = '正在获取电量...';
+              break;
+            case 'subscribed':
+              this.loadingText = '已连接';
+              break;
+            default:
+              this.loadingText = '等待连接...';
+              break;
           }
         }
-      },
-      (status: ConnectionStatus) => {
-        this.connectionStatus = status;
-        console.info(`[PopupWindow] 连接状态: ${status}`);
-        
-        // 根据状态更新提示文本
-        switch (status) {
-          case 'scanning':
-            this.loadingText = '正在扫描耳机...';
-            break;
-          case 'connecting':
-            this.loadingText = '正在连接...';
-            break;
-          case 'connected':
-            this.loadingText = '正在获取电量...';
-            break;
-          case 'subscribed':
-            this.loadingText = '已连接';
-            break;
-          default:
-            this.loadingText = '等待连接...';
-            break;
+      );
+      this.manager.startContinuousMonitor();
+
+      // 超时保护
+      this.connectTimeout = setTimeout(() => {
+        if (this.leftBattery < 0 && this.rightBattery < 0 && this.caseBattery < 0) {
+          this.loadingText = '连接超时,请确保耳机已开启';
         }
-      }
-    );
-
-    // 立即开始自动连接
-    this.manager.startContinuousMonitor();
-
-    // 设置超时保护:15秒后如果还没获取到电量,显示超时提示
-    this.connectTimeout = setTimeout(() => {
-      if (this.leftBattery < 0 && this.rightBattery < 0 && this.caseBattery < 0) {
-        this.loadingText = '连接超时,请确保耳机已开启';
-      }
-    }, 15000);
+      }, 15000);
+    }
   }
 
   aboutToDisappear(): void {
@@ -116,7 +123,7 @@ struct PopupWindow {
     if (this.autoCloseTimeout !== -1) {
       clearTimeout(this.autoCloseTimeout);
     }
-    this.manager.disconnect(true);
+    // 不调用 disconnect，避免断开主页面的共享连接
   }
 
   getBatteryColor(battery: number, charging: boolean): string {
@@ -177,7 +184,7 @@ struct PopupWindow {
         // 弹窗卡片内容
         Column() {
           // 标题
-          Text('OPPO Enco Air5 Pro')
+          Text('Air5 Pro')
             .fontSize(18)
             .fontWeight(FontWeight.Bold)
             .fontColor('#FFFFFF')
@@ -299,18 +306,37 @@ struct PopupWindow {
           .width('100%')
           .padding({ left: 12, right: 12 })
 
-          // 底部关闭按钮
-          Button('关闭')
-            .fontSize(13)
-            .fontColor('#FFFFFF')
-            .width('50%')
-            .height(36)
-            .backgroundColor('#2A5CFF')
-            .borderRadius(18)
-            .margin({ top: 20, bottom: 16 })
-            .onClick(() => {
-              this.closePopup();
-            })
+          // 底部操作按钮
+          Row() {
+            Button('设置')
+              .fontSize(13)
+              .fontColor('#FFFFFF')
+              .height(36)
+              .layoutWeight(1)
+              .backgroundColor('#1E1E3E')
+              .borderRadius(18)
+              .border({ width: 1, color: '#2A2A5E' })
+              .onClick(() => {
+                this.openMainPage();
+              })
+
+            Blank()
+              .width(16)
+
+            Button('关闭')
+              .fontSize(13)
+              .fontColor('#FFFFFF')
+              .height(36)
+              .layoutWeight(1)
+              .backgroundColor('#2A5CFF')
+              .borderRadius(18)
+              .onClick(() => {
+                this.closePopup();
+              })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16 })
+          .margin({ top: 20, bottom: 16 })
         }
         .width('85%')
         .borderRadius(20)
@@ -347,10 +373,51 @@ struct PopupWindow {
   }
 
   /**
+   * 跳转到主页面
+   * 子窗口模式下只需关闭子窗口即可露出主页面
+   */
+  private openMainPage(): void {
+    this.tryCloseSubWindow(() => {
+      let context = getContext(this) as common.UIAbilityContext;
+      let want: Want = {
+        bundleName: 'com.hzx.encoair',
+        abilityName: 'EntryAbility'
+      };
+      context.startAbility(want).then(() => {
+        context.terminateSelf();
+      }).catch((err: Error) => {
+        console.error(`[PopupWindow] 跳转主页面失败: ${err.message}`);
+      });
+    });
+  }
+
+  /**
    * 关闭弹窗
    */
   private closePopup(): void {
-    let context = getContext(this) as common.UIAbilityContext;
-    context.terminateSelf();
+    this.tryCloseSubWindow(() => {
+      let context = getContext(this) as common.UIAbilityContext;
+      context.terminateSelf();
+    });
+  }
+
+  /**
+   * 尝试关闭子窗口，成功则执行 onSuccess，失败则执行 onFallback
+   */
+  private tryCloseSubWindow(onFallback: () => void): void {
+    let subWin = EntryAbility.previewSubWindow;
+    if (subWin) {
+      try {
+        subWin.destroyWindow();
+        EntryAbility.previewSubWindow = null;
+        console.info('[PopupWindow] 子窗口已销毁');
+      } catch (e) {
+        console.warn('[PopupWindow] 销毁子窗口失败，回退到 terminateSelf');
+        EntryAbility.previewSubWindow = null;
+        onFallback();
+      }
+    } else {
+      onFallback();
+    }
   }
 }

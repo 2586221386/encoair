@@ -2,19 +2,19 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "OPPO蓝牙耳机电量监控模块"
+      "value": "Air5pro耳机助手模块"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "OPPO Enco Air5 Pro蓝牙耳机电量监控应用"
+      "value": "Air5pro耳机助手"
     },
     {
       "name": "EntryAbility_label",
-      "value": "OPPO电量监控"
+      "value": "Air5pro耳机助手"
     },
     {
       "name": "bluetooth_permission_reason",
-      "value": "用于扫描和连接OPPO蓝牙耳机，获取电量信息"
+      "value": "用于扫描和连接蓝牙耳机，获取电量信息"
     },
     {
       "name": "PopupAbility_label",
@@ -26,7 +26,7 @@
     },
     {
       "name": "widget_battery_desc",
-      "value": "显示OPPO Enco Air5 Pro左耳、右耳、充电仓电量"
+      "value": "显示Air5 Pro左耳、右耳、充电仓电量"
     },
     {
       "name": "work_scheduler_label",

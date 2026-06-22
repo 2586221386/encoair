@@ -5,13 +5,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "C:\\Users\\黄春勇\\.ohos\\config\\default_encoair_htqrVGD2qKdBxMs4iBNDrtFvxzvCHnZ1D9MXFjZd7QE=.cer",
-          "keyAlias": "debugKey",
-          "keyPassword": "0000001ADA6FBA5F1A46444CED68E8F40A537182CF33F51804B50D4B73804CE02EA39B69930B036EE413",
-          "profile": "C:\\Users\\黄春勇\\.ohos\\config\\default_encoair_htqrVGD2qKdBxMs4iBNDrtFvxzvCHnZ1D9MXFjZd7QE=.p7b",
+          "storeFile": "E:/huaweikaifa/证书文件/Hzx2586221386.p12",
+          "storePassword": "0000001F8687547870F17EEA3E0D9B55A2C621524405F85A609BAE425A44CAF0E039DE145959F5988D2A7BB402290E",
+          "keyAlias": "hzx2586221386",
+          "keyPassword": "0000001F8467E5FC542111043EAC37ADB1C2D6CE49F0654B4472B11FAD27BE184C9D167E34F3DABEB809F60BB9ED14",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\黄春勇\\.ohos\\config\\default_encoair_htqrVGD2qKdBxMs4iBNDrtFvxzvCHnZ1D9MXFjZd7QE=.p12",
-          "storePassword": "0000001A5A687981015CC0E53684B63EA6A76432A9EF683D18214929F91AED00447D0B6542096149BCFD"
+          "profile": "E:/huaweikaifa/证书文件/OPPO电量监控调试Debug.p7b",
+          "certpath": "E:/huaweikaifa/证书文件/OPPO电量监控调试.cer"
         }
       }
     ],
