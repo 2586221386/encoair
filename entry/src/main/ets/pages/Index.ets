@@ -278,7 +278,7 @@ struct Index {
   getStatusText(): string {
     switch (this.connectionStatus) {
       case 'disconnected':
-        return '正在监听蓝牙设备...';
+        return '蓝牙已断开，请点击重新连接...';
       case 'scanning':
         return '正在扫描耳机...';
       case 'connecting':
@@ -437,17 +437,29 @@ struct Index {
       });
       if (result.photoUris && result.photoUris.length > 0) {
         let srcUri = result.photoUris[0];
-        let destPath = context.filesDir + '/popup_bg.jpg';
-        // 通过 image 框架解码源图片并转为 JPEG，兼容 HEIC 等格式
-        let srcFile = fileIo.openSync(srcUri, fileIo.OpenMode.READ_ONLY);
-        let imgSource = image.createImageSource(srcFile.fd);
-        let packer = image.createImagePacker();
-        let destFile = fileIo.openSync(destPath, fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
-        await packer.packToFile(imgSource, destFile.fd, { format: 'image/jpeg', quality: 90 });
-        packer.release();
-        imgSource.release();
-        fileIo.closeSync(destFile.fd);
-        fileIo.closeSync(srcFile.fd);
+        let isGif = srcUri.toLowerCase().endsWith('.gif');
+        let destPath: string;
+        if (isGif) {
+          // GIF 格式：直接复制原始文件，保留动画帧
+          destPath = context.filesDir + '/popup_bg.gif';
+          let srcFile = fileIo.openSync(srcUri, fileIo.OpenMode.READ_ONLY);
+          let destFile = fileIo.openSync(destPath, fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
+          fileIo.copyFileSync(srcFile.fd, destFile.fd);
+          fileIo.closeSync(destFile.fd);
+          fileIo.closeSync(srcFile.fd);
+        } else {
+          // 非 GIF：通过 ImageKit 转 JPEG（兼容 HEIC 等格式）
+          destPath = context.filesDir + '/popup_bg.jpg';
+          let srcFile = fileIo.openSync(srcUri, fileIo.OpenMode.READ_ONLY);
+          let imgSource = image.createImageSource(srcFile.fd);
+          let packer = image.createImagePacker();
+          let destFile = fileIo.openSync(destPath, fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
+          await packer.packToFile(imgSource, destFile.fd, { format: 'image/jpeg', quality: 90 });
+          packer.release();
+          imgSource.release();
+          fileIo.closeSync(destFile.fd);
+          fileIo.closeSync(srcFile.fd);
+        }
         // 保存到 Preferences
         let pref = preferences.getPreferencesSync(context, { name: 'popup_settings' });
         pref.putSync('popupBgImage', destPath);
@@ -511,10 +523,14 @@ struct Index {
   private resetPopupBackground(): void {
     try {
       let context = getContext(this) as common.UIAbilityContext;
-      let destPath = context.filesDir + '/popup_bg.jpg';
-      // 删除沙箱中的图片文件
-      if (fileIo.accessSync(destPath)) {
-        fileIo.unlinkSync(destPath);
+      // 删除沙箱中的图片文件（JPEG 或 GIF）
+      let jpgPath = context.filesDir + '/popup_bg.jpg';
+      let gifPath = context.filesDir + '/popup_bg.gif';
+      if (fileIo.accessSync(jpgPath)) {
+        fileIo.unlinkSync(jpgPath);
+      }
+      if (fileIo.accessSync(gifPath)) {
+        fileIo.unlinkSync(gifPath);
       }
       let pref = preferences.getPreferencesSync(context, { name: 'popup_settings' });
       pref.deleteSync('popupBgImage');

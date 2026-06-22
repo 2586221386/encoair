@@ -162,6 +162,9 @@ export class OppoEarphoneManager {
   // 定时查询定时器
   private queryTimer: number = -1;
 
+  // 系统级断开检测定时器（每5秒检查系统音频配置状态）
+  private disconnectCheckTimer: number = -1;
+
   // 应用上下文（用于卡片数据刷新），使用静态属性以便所有实例共享
   private static appContext: common.Context | null = null;
 
@@ -223,6 +226,47 @@ export class OppoEarphoneManager {
       let error = err as BusinessError;
       console.warn(`[OppoManager] 检查系统音频配置状态失败: ${error.message}，默认允许连接`);
       return true; // 检查失败时默认允许连接
+    }
+  }
+
+  /**
+   * 启动系统级断开检测定时器
+   * 每5秒检查系统音频配置状态，一旦检测到系统蓝牙音频断开，立即触发断开
+   * 比定时发送SPP信号检测更快更可靠
+   */
+  private startDisconnectMonitor(): void {
+    this.stopDisconnectMonitor();
+    this.disconnectCheckTimer = setInterval(() => {
+      if (!this.isConnected) return;
+      try {
+        let state = connection.getProfileConnectionState();
+        if (state !== constant.ProfileConnectionState.STATE_CONNECTED) {
+          console.info('[OppoManager] 系统音频配置已断开，清理SPP连接并重启监听...');
+          // 先停止所有定时器和后台服务（不停止持续监听）
+          this.stopDisconnectMonitor();
+          this.stopPeriodicQuery();
+          this.cancelReconnect();
+          this.stopBackgroundService();
+          this.cleanup(false);
+          this.notifyStatus('disconnected');
+          // 系统断开后自动重启监听，等待耳机重连
+          this.startContinuousMonitor();
+        }
+      } catch (err) {
+        let error = err as BusinessError;
+        console.warn(`[OppoManager] 系统断开检测失败: ${error.message}`);
+      }
+    }, 5000);
+    console.info('[OppoManager] 系统级断开检测已启动');
+  }
+
+  /**
+   * 停止系统级断开检测定时器
+   */
+  private stopDisconnectMonitor(): void {
+    if (this.disconnectCheckTimer !== -1) {
+      clearInterval(this.disconnectCheckTimer);
+      this.disconnectCheckTimer = -1;
     }
   }
 
@@ -309,6 +353,8 @@ export class OppoEarphoneManager {
         console.info('[OppoManager] 监听扫描超时,停止本次扫描');
         this.stopScan();
         this.notifyStatus('disconnected');
+        // 扫描超时未连接，更新桌面卡片为断开状态
+        this.saveBatteryToWidget();
       }
     }, 10000);
     ble.on('BLEDeviceFind', (devices: Array<ble.ScanResult>) => {
@@ -375,6 +421,12 @@ export class OppoEarphoneManager {
   startAutoConnect(): void {
     console.info('[OppoManager] 启动自动连接(SPP RFCOMM)...');
     if (this.savedMac) {
+      // 先检查系统音频是否已连接
+      if (!this.isSystemAudioConnected()) {
+        console.info(`[OppoManager] 已保存设备 ${this.savedMac} 存在但系统音频未连接，等待系统先建立音频连接`);
+        this.startScan();
+        return;
+      }
       console.info(`[OppoManager] 尝试连接已保存设备: ${this.savedMac}`);
       this.connectToEarphone(this.savedMac);
     } else {
@@ -489,7 +541,13 @@ export class OppoEarphoneManager {
       let errCode: number = Number(error.code);
       if (errCode === 2901054) {
         console.info('[OppoManager] 检测到SPP IO错误(2901054)，自然断开');
-        this.disconnect(false);
+        this.stopDisconnectMonitor();
+        this.stopPeriodicQuery();
+        this.cancelReconnect();
+        this.stopBackgroundService();
+        this.cleanup(false);
+        this.notifyStatus('disconnected');
+        this.startContinuousMonitor();
       }
     }
   }
@@ -714,6 +772,7 @@ export class OppoEarphoneManager {
   disconnect(silent: boolean = false): void {
     this.stopContinuousMonitor();
     this.stopPeriodicQuery();
+    this.stopDisconnectMonitor();
     this.cancelReconnect();
     // 停止后台保活 + 移除通知
     this.stopBackgroundService();
@@ -774,7 +833,13 @@ export class OppoEarphoneManager {
             // 空数据表示蓝牙连接已自然断开（耳机断电/超出范围）
             if (valueArray.length === 0) {
               console.info('[OppoManager] sppRead收到空数据，检测到自然断开');
-              this.disconnect(false);
+              this.stopDisconnectMonitor();
+              this.stopPeriodicQuery();
+              this.cancelReconnect();
+              this.stopBackgroundService();
+              this.cleanup(false);
+              this.notifyStatus('disconnected');
+              this.startContinuousMonitor();
               return;
             }
             if (valueArray.length >= 9 && valueArray[0] === 0xAA) {
@@ -806,6 +871,9 @@ export class OppoEarphoneManager {
 
         // 启动后台保活 + 常驻通知
         this.startBackgroundService();
+
+        // 启动系统级断开检测（每5秒检查系统音频配置状态）
+        this.startDisconnectMonitor();
 
         // 连接成功后启动查询（参考安卓 connectRfcomm 流程）
         setTimeout(() => {

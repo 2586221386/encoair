@@ -20,6 +20,8 @@ struct PopupWindow {
   @State connectionStatus: ConnectionStatus = 'disconnected';
   @State loadingText: string = '正在连接...';
   @State popupBgImage: string = '';
+  @State isGifBg: boolean = false;
+  @State cardHeight: number = 0;
 
   private manager: OppoEarphoneManager = OppoEarphoneManager.getInstance();
   private connectTimeout: number = -1;
@@ -155,7 +157,7 @@ struct PopupWindow {
       let pref = preferences.getPreferencesSync(context, { name: 'popup_settings' });
       let savedPath = pref.getSync('popupBgImage', '') as string;
       if (savedPath && fileIo.accessSync(savedPath)) {
-        // backgroundImage 需要 file:// 前缀来访问沙箱文件
+        this.isGifBg = savedPath.toLowerCase().endsWith('.gif');
         this.popupBgImage = 'file://' + savedPath;
       }
     } catch (e) {
@@ -183,6 +185,15 @@ struct PopupWindow {
 
         // 弹窗卡片内容
         Column() {
+          // GIF 背景图层（绝对定位在 Column 内，由 clip 裁剪）
+          if (this.popupBgImage && this.isGifBg) {
+            Image(this.popupBgImage)
+              .objectFit(ImageFit.Cover)
+              .width('100%')
+              .height(this.cardHeight > 0 ? this.cardHeight : 0)
+              .position({ x: 0, y: 0 })
+          }
+
           // 标题
           Text('Air5 Pro')
             .fontSize(18)
@@ -341,14 +352,14 @@ struct PopupWindow {
         .width('85%')
         .borderRadius(20)
         .clip(true)
-        .backgroundImage(this.popupBgImage)
+        .backgroundColor(this.popupBgImage ? '#00000000' : '#12122E')
+        .backgroundImage(this.popupBgImage && !this.isGifBg ? this.popupBgImage : '')
         .backgroundImageSize(ImageSize.Cover)
         .backgroundImagePosition(Alignment.Center)
-        .backgroundColor(this.popupBgImage ? '#00000000' : '#12122E')
         .linearGradient({
           angle: 180,
           colors: this.popupBgImage
-            ? [['#00000000', 0.0], ['#00000000', 1.0]]
+            ? [['#66000000', 0.0], ['#99000000', 1.0]]
             : [['#1A1A3E', 0.0], ['#12122E', 1.0]]
         })
         .shadow({
@@ -362,6 +373,12 @@ struct PopupWindow {
           color: '#2A2A5E'
         })
         .margin({ bottom: 30 })
+        .onAreaChange((oldValue: Area, newValue: Area) => {
+          let h = newValue.height;
+          if (typeof h === 'number' && h > 0) {
+            this.cardHeight = h;
+          }
+        })
       }
       .width('100%')
       .height('100%')

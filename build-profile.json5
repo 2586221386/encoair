@@ -6,12 +6,12 @@
         "type": "HarmonyOS",
         "material": {
           "storeFile": "E:/huaweikaifa/证书文件/Hzx2586221386.p12",
-          "storePassword": "0000001F8687547870F17EEA3E0D9B55A2C621524405F85A609BAE425A44CAF0E039DE145959F5988D2A7BB402290E",
+          "storePassword": "0000001F2AAB7E283640DAA1E0E7C9F0AB344FE064D430D9BF1631FC40724089E9FD4BC8DF77588CE9B5AC4E601324",
           "keyAlias": "hzx2586221386",
-          "keyPassword": "0000001F8467E5FC542111043EAC37ADB1C2D6CE49F0654B4472B11FAD27BE184C9D167E34F3DABEB809F60BB9ED14",
+          "keyPassword": "0000001F89FA95FBCD38EDA005B58B173BBF6E4CBBF9E8DF6F3358F437C76C5935E02AA8E4104948E97F8C2E2F79DF",
           "signAlg": "SHA256withECDSA",
-          "profile": "E:/huaweikaifa/证书文件/OPPO电量监控调试Debug.p7b",
-          "certpath": "E:/huaweikaifa/证书文件/OPPO电量监控调试.cer"
+          "profile": "E:/huaweikaifa/证书文件/OPPO电量监控Release.p7b",
+          "certpath": "E:/huaweikaifa/证书文件/OPPO电量监控.cer"
         }
       }
     ],
