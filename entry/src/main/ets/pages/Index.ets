@@ -7,6 +7,7 @@ import { preferences } from '@kit.ArkData';
 import { image } from '@kit.ImageKit';
 import { formProvider } from '@kit.FormKit';
 import { notificationManager } from '@kit.NotificationKit';
+import router from '@ohos.router';
 
 /**
  * 电量卡片子组件
@@ -1290,6 +1291,44 @@ struct Index {
         .backgroundColor('#12122E')
         .border({ width: 1, color: '#2A2A5E' })
         .margin({ top: 24 })
+        .alignItems(HorizontalAlign.Center)
+        .padding({ bottom: 16 })
+
+        // ====== 使用帮助 ======
+        Column() {
+          Row() {
+            Text('❓')
+              .fontSize(18)
+            Text(' 使用帮助')
+              .fontSize(14)
+              .fontColor('#AAAACC')
+              .margin({ left: 6 })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+
+          Text('查看各功能的使用说明和常见问题')
+            .fontSize(12)
+            .fontColor('#666688')
+            .width('85%')
+            .margin({ bottom: 12 })
+
+          Button('打开使用帮助')
+            .fontSize(14)
+            .fontColor('#FFFFFF')
+            .width('85%')
+            .height(40)
+            .backgroundColor('#2A5CFF')
+            .borderRadius(20)
+            .onClick(() => {
+              router.pushUrl({ url: 'pages/HelpPage' });
+            })
+        }
+        .width('85%')
+        .borderRadius(16)
+        .backgroundColor('#12122E')
+        .border({ width: 1, color: '#2A2A5E' })
+        .margin({ top: 20 })
         .alignItems(HorizontalAlign.Center)
         .padding({ bottom: 16 })
 
