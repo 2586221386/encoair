@@ -1,4 +1,4 @@
-import { ble, socket, connection } from '@kit.ConnectivityKit';
+import { ble, socket, connection, constant } from '@kit.ConnectivityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { preferences } from '@kit.ArkData';
 import { formProvider, formBindingData } from '@kit.FormKit';
@@ -209,6 +209,24 @@ export class OppoEarphoneManager {
   }
 
   /**
+   * 检查系统蓝牙音频配置是否已连接
+   * 通过 getProfileConnectionState() 检查是否有任何音频配置(A2DP/HFP)处于连接状态
+   * 用于确保系统音频连接已建立后再发起SPP连接，避免抢占系统音频连接
+   */
+  private isSystemAudioConnected(): boolean {
+    try {
+      let state = connection.getProfileConnectionState();
+      let connected = state === constant.ProfileConnectionState.STATE_CONNECTED;
+      console.info(`[OppoManager] 系统音频配置连接状态: ${connected ? '已连接' : '未连接'}`);
+      return connected;
+    } catch (err) {
+      let error = err as BusinessError;
+      console.warn(`[OppoManager] 检查系统音频配置状态失败: ${error.message}，默认允许连接`);
+      return true; // 检查失败时默认允许连接
+    }
+  }
+
+  /**
    * 启动持续监听模式(应用启动时调用)
    */
   startContinuousMonitor(): void {
@@ -218,10 +236,12 @@ export class OppoEarphoneManager {
     }
     console.info('[OppoManager] 启动持续监听模式(SPP RFCOMM)...');
     this.isMonitorRunning = true;
-    // 第一步：优先尝试从已保存MAC或系统已配对设备中连接
-    if (this.savedMac) {
-      console.info(`[OppoManager] 发现已保存设备,优先连接: ${this.savedMac}`);
+    // 第一步：优先尝试从已保存MAC或系统已配对设备中连接（需先确认系统音频已连接）
+    if (this.savedMac && this.isSystemAudioConnected()) {
+      console.info(`[OppoManager] 发现已保存设备且系统音频已连接,优先连接: ${this.savedMac}`);
       this.connectToEarphone(this.savedMac);
+    } else if (this.savedMac) {
+      console.info(`[OppoManager] 已保存设备 ${this.savedMac} 存在但系统音频未连接，等待系统先建立音频连接`);
     } else {
       this.tryConnectFromPairedDevices();
     }
@@ -232,6 +252,7 @@ export class OppoEarphoneManager {
   /**
    * 从系统已配对设备中查找OPPO耳机并直连SPP
    * 解决耳机已通过系统蓝牙配对连接后，BLE扫描无法发现的问题
+   * 仅在系统音频配置已连接时才发起SPP连接
    */
   private tryConnectFromPairedDevices(): boolean {
     try {
@@ -243,7 +264,12 @@ export class OppoEarphoneManager {
           let deviceName: string = connection.getRemoteDeviceName(mac);
           console.info(`[OppoManager] 已配对设备[${i}]: MAC=${mac}, 名称=${deviceName}`);
           if (deviceName && deviceName.includes('OPPO Enco')) {
-            console.info(`[OppoManager] 发现已配对的OPPO耳机! 跳过BLE扫描，直接SPP连接: ${deviceName} [${mac}]`);
+            // 检查系统音频配置是否已连接
+            if (!this.isSystemAudioConnected()) {
+              console.info(`[OppoManager] 发现已配对OPPO耳机，但系统音频未连接，等待系统先建立音频连接`);
+              return false;
+            }
+            console.info(`[OppoManager] 发现已配对的OPPO耳机且系统音频已连接! 直接SPP连接: ${deviceName} [${mac}]`);
             this.saveConnectedMac(mac);
             this.connectToEarphone(mac);
             return true;
@@ -291,6 +317,11 @@ export class OppoEarphoneManager {
         let deviceMac = device.deviceId;
         if (deviceName && deviceName.includes('OPPO Enco')) {
           console.info(`[OppoManager] 监听到OPPO耳机! 名字: ${deviceName}, MAC: ${deviceMac}`);
+          // 检查系统音频配置是否已连接，避免抢占系统音频连接
+          if (!this.isSystemAudioConnected()) {
+            console.info('[OppoManager] 系统音频未连接，跳过SPP连接，等待下一轮扫描');
+            return;
+          }
           clearTimeout(scanTimeout);
           this.stopScan();
           this.connectToEarphone(deviceMac);
