@@ -8,6 +8,7 @@ import { image } from '@kit.ImageKit';
 import { formProvider } from '@kit.FormKit';
 import { notificationManager } from '@kit.NotificationKit';
 import router from '@ohos.router';
+import { HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit';
 
 /**
  * 电量卡片子组件
@@ -142,6 +143,7 @@ struct Index {
   @State persistentNotifyEnabled: boolean = false;
   // TabBar
   @State currentIndex: number = 0;
+  private tabsController: HdsTabsController = new HdsTabsController();
 
   private manager: OppoEarphoneManager = OppoEarphoneManager.getInstance();
 
@@ -558,7 +560,7 @@ struct Index {
   }
 
   build() {
-    Tabs({ barPosition: BarPosition.End, index: this.currentIndex }) {
+    HdsTabs({ controller: this.tabsController }) {
       TabContent() {
         Column() {
           Scroll() {
@@ -582,7 +584,7 @@ struct Index {
               this.TipSection();
             }
             .width('100%')
-            .padding({ top: this.statusBarHeight })
+            .padding({ top: this.statusBarHeight, bottom: 100 })
           }
           .layoutWeight(1)
           .scrollBar(BarState.Off)
@@ -590,6 +592,7 @@ struct Index {
         }
         .width('100%')
         .height('100%')
+        .backgroundColor('#0D0D1A')
       }
       .tabBar(this.TabBarItem('🏠', '主页', 0))
 
@@ -598,15 +601,24 @@ struct Index {
       }
       .tabBar(this.TabBarItem('⚙️', '设置', 1))
     }
-    .barHeight(56)
-    .barMode(BarMode.Fixed)
+    .barOverlap(true)
+    .vertical(false)
+    .barPosition(BarPosition.End)
+    .barFloatingStyle({
+      barBottomMargin: 28,
+      gradientMask: {
+        maskHeight: 88,
+        maskColor: Color.Transparent
+      },
+      systemMaterialEffect: {
+        materialType: hdsMaterial.MaterialType.ADAPTIVE,
+        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+      }
+    })
     .width('100%')
     .height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .linearGradient({
-      angle: 180,
-      colors: [['#0D0D1A', 0.0], ['#1A1A3E', 0.5], ['#0D0D2B', 1.0]]
-    })
+    .backgroundColor('#0D0D1A')
     .onChange((index: number) => {
       this.currentIndex = index;
     })
@@ -1544,7 +1556,7 @@ struct Index {
         .clip(true)
       }
       .width('100%')
-      .padding({ top: this.statusBarHeight, bottom: 20 })
+      .padding({ top: this.statusBarHeight, bottom: 100 })
       .alignItems(HorizontalAlign.Center)
     }
     .layoutWeight(1)
