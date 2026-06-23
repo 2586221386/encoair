@@ -130,6 +130,10 @@ struct Index {
   @State gameModeEnabled: boolean = false;
   // 空间音频
   @State spatialAudioEnabled: boolean = false;
+  // 双设备连接
+  @State dualDeviceEnabled: boolean = false;
+  // EQ预设
+  @State currentEqPreset: number = -1;
   @StorageProp('statusBarHeight') statusBarHeight: number = 0;
   // 弹窗背景图片
   @State popupBgImage: string = '';
@@ -212,6 +216,16 @@ struct Index {
         // 空间音频更新
         this.spatialAudioEnabled = enabled;
         console.info(`[Index] 空间音频: ${enabled ? '开启' : '关闭'}`);
+      },
+      (enabled: boolean) => {
+        // 双设备连接更新
+        this.dualDeviceEnabled = enabled;
+        console.info(`[Index] 双设备连接: ${enabled ? '开启' : '关闭'}`);
+      },
+      (preset: number) => {
+        // EQ预设更新
+        this.currentEqPreset = preset;
+        console.info(`[Index] EQ预设: ${OppoEarphoneManager.EQ_PRESETS[preset] ?? '未知'}`);
       }
     );
     
@@ -1074,6 +1088,107 @@ struct Index {
     .backgroundColor('#12122E')
     .border({ width: 1, color: '#2A2A5E' })
     .margin({ top: 20 })
+
+    // 双设备连接
+    Column() {
+      Row() {
+        Text('📱')
+          .fontSize(18)
+        Text(' 双设备连接')
+          .fontSize(14)
+          .fontColor('#AAAACC')
+          .margin({ left: 6 })
+
+        Blank()
+
+        if (this.connectionStatus === 'subscribed') {
+          Toggle({ type: ToggleType.Switch, isOn: this.dualDeviceEnabled })
+            .selectedColor('#2A5CFF')
+            .switchPointColor('#FFFFFF')
+            .onChange((isOn: boolean) => {
+              this.manager.setDualDeviceConnection(isOn);
+            })
+        } else {
+          Text('--')
+            .fontSize(14)
+            .fontColor('#666688')
+        }
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 8, bottom: 16 })
+    }
+    .width('85%')
+    .borderRadius(16)
+    .backgroundColor('#12122E')
+    .border({ width: 1, color: '#2A2A5E' })
+    .margin({ top: 12 })
+
+    // EQ 大师调音预设
+    Column() {
+      Row() {
+        Text('🎵')
+          .fontSize(18)
+        Text(' 大师调音')
+          .fontSize(14)
+          .fontColor('#AAAACC')
+          .margin({ left: 6 })
+
+        Blank()
+
+        if (this.connectionStatus === 'subscribed' && this.currentEqPreset >= 0) {
+          Text(OppoEarphoneManager.EQ_PRESETS[this.currentEqPreset] ?? '')
+            .fontSize(12)
+            .fontColor('#4CAF50')
+        } else if (this.connectionStatus !== 'subscribed') {
+          Text('--')
+            .fontSize(14)
+            .fontColor('#666688')
+        }
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 10, bottom: 4 })
+
+      if (this.connectionStatus === 'subscribed') {
+        Grid() {
+          ForEach(OppoEarphoneManager.EQ_PRESET_IDS, (presetId: number) => {
+            GridItem() {
+              Button(OppoEarphoneManager.EQ_PRESETS[presetId] ?? '')
+                .fontSize(12)
+                .fontWeight(this.currentEqPreset === presetId ? FontWeight.Bold : FontWeight.Normal)
+                .fontColor(this.currentEqPreset === presetId ? '#FFFFFF' : '#AAAACC')
+                .width('100%')
+                .height(34)
+                .backgroundColor(this.currentEqPreset === presetId ? '#2A5CFF' : '#1E1E3E')
+                .borderRadius(12)
+                .border({
+                  width: 1,
+                  color: this.currentEqPreset === presetId ? '#4A7CFF' : '#2A2A5E'
+                })
+                .onClick(() => {
+                  this.manager.setEqPreset(presetId);
+                })
+            }
+          }, (presetId: number) => presetId.toString())
+        }
+        .columnsTemplate('1fr 1fr 1fr')
+        .columnsGap(6)
+        .rowsGap(6)
+        .width('100%')
+        .padding({ left: 12, right: 12, bottom: 12 })
+      } else {
+        Text('连接耳机后可使用大师调音')
+          .fontSize(11)
+          .fontColor('#555577')
+          .width('100%')
+          .textAlign(TextAlign.Center)
+          .padding({ bottom: 12 })
+      }
+    }
+    .width('85%')
+    .borderRadius(16)
+    .backgroundColor('#12122E')
+    .border({ width: 1, color: '#2A2A5E' })
+    .margin({ top: 12 })
   }
 
   // ANC 单个按钮组件

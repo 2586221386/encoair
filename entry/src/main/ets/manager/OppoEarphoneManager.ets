@@ -132,6 +132,17 @@ export class OppoEarphoneManager {
   private wearCallback: ((wear: WearStatus) => void) | null = null;
   private gameModeCallback: ((enabled: boolean) => void) | null = null;
   private spatialAudioCallback: ((enabled: boolean) => void) | null = null;
+  private dualDeviceCallback: ((enabled: boolean) => void) | null = null;
+  private eqPresetCallback: ((preset: number) => void) | null = null;
+
+  // === EQ大师调音预设 (OPPO Enco Air5 Pro) ===
+  // -1=未知, 0=至臻原音, 1=澎湃低音, 2=纯享人声
+  static readonly EQ_PRESETS: Record<number, string> = {
+    0: '至臻原音',
+    1: '澎湃低音',
+    2: '纯享人声'
+  };
+  static readonly EQ_PRESET_IDS: number[] = [0, 1, 2];
 
   // 当前电量状态
   private batteryInfo: BatteryInfo = {
@@ -158,6 +169,12 @@ export class OppoEarphoneManager {
 
   // 空间音频状态（0=关闭, 1=固定/开启）
   private spatialAudioEnabled: boolean = false;
+
+  // 双设备连接状态
+  private dualDeviceEnabled: boolean = false;
+
+  // EQ预设状态 (-1=未知)
+  private currentEqPreset: number = -1;
 
   // 定时查询定时器
   private queryTimer: number = -1;
@@ -197,11 +214,18 @@ export class OppoEarphoneManager {
   }
 
   /**
+   * 获取当前EQ预设
+   */
+  getCurrentEqPreset(): number {
+    return this.currentEqPreset;
+  }
+
+  /**
    * 设置回调函数
    */
   setCallbacks(batteryCb: (info: BatteryInfo) => void, statusCb: (status: ConnectionStatus) => void, rawCb?: (hex: string) => void,
     ancCb?: (mode: number) => void, wearCb?: (wear: WearStatus) => void, gameCb?: (enabled: boolean) => void,
-    spatialAudioCb?: (enabled: boolean) => void): void {
+    spatialAudioCb?: (enabled: boolean) => void, dualCb?: (enabled: boolean) => void, eqCb?: (preset: number) => void): void {
     this.batteryCallback = batteryCb;
     this.statusCallback = statusCb;
     this.rawDataCallback = rawCb ?? null;
@@ -209,6 +233,8 @@ export class OppoEarphoneManager {
     this.wearCallback = wearCb ?? null;
     this.gameModeCallback = gameCb ?? null;
     this.spatialAudioCallback = spatialAudioCb ?? null;
+    this.dualDeviceCallback = dualCb ?? null;
+    this.eqPresetCallback = eqCb ?? null;
   }
 
   /**
@@ -640,6 +666,58 @@ export class OppoEarphoneManager {
   }
 
   /**
+   * 设置双设备连接开关
+   * 使用 cmd=0x0403 + feature=0x11（双设备连接特征码）
+   */
+  setDualDeviceConnection(enabled: boolean): void {
+    this.dualDeviceEnabled = enabled;
+    this.notifyDualDeviceUpdate(enabled);
+    const payload: number[] = [0x11, enabled ? 0x01 : 0x00];
+    const packet = this.buildPacket(0x0403, 0x00, payload);
+    this.sendPacket(packet);
+    console.info(`[OppoManager] 发送双设备连接指令: ${enabled ? '开启' : '关闭'}`);
+    setTimeout(() => {
+      this.queryDualDevice();
+    }, 350);
+  }
+
+  /**
+   * 查询双设备连接状态
+   */
+  private queryDualDevice(): void {
+    const packet = this.buildPacket(0x010D, 0x00, []);
+    this.sendPacket(packet);
+  }
+
+  /**
+   * 设置EQ大师调音预设
+   * Cmd=0x0406, payload=[presetId]
+   */
+  setEqPreset(presetId: number): void {
+    if (!OppoEarphoneManager.EQ_PRESET_IDS.includes(presetId)) {
+      console.warn(`[OppoManager] 不支持的EQ预设ID: ${presetId}`);
+      return;
+    }
+    this.currentEqPreset = presetId;
+    this.notifyEqPresetUpdate(presetId);
+    const packet = this.buildPacket(0x0406, 0x00, [presetId]);
+    this.sendPacket(packet);
+    console.info(`[OppoManager] 发送EQ预设切换: ${OppoEarphoneManager.EQ_PRESETS[presetId]} (id=${presetId})`);
+    setTimeout(() => {
+      this.queryEqPreset();
+    }, 350);
+  }
+
+  /**
+   * 查询当前EQ预设
+   * Cmd=0x010F, 无payload
+   */
+  private queryEqPreset(): void {
+    const packet = this.buildPacket(0x010F, 0x00, []);
+    this.sendPacket(packet);
+  }
+
+  /**
    * 启用主动状态上报
    */
   enableStatusReport(): void {
@@ -705,6 +783,14 @@ export class OppoEarphoneManager {
 
   private notifySpatialAudioUpdate(enabled: boolean): void {
     if (this.spatialAudioCallback) this.spatialAudioCallback(enabled);
+  }
+
+  private notifyDualDeviceUpdate(enabled: boolean): void {
+    if (this.dualDeviceCallback) this.dualDeviceCallback(enabled);
+  }
+
+  private notifyEqPresetUpdate(preset: number): void {
+    if (this.eqPresetCallback) this.eqPresetCallback(preset);
   }
 
   /**
@@ -860,6 +946,10 @@ export class OppoEarphoneManager {
             this.parseGameMode(valueArray);
             // 解析空间音频
             this.parseSpatialAudio(valueArray);
+            // 解析功能设置响应 (0x8403)
+            this.parseSwitchFeatureResponse(valueArray);
+            // 解析 EQ 预设
+            this.parseEqPreset(valueArray);
           });
         } catch (readErr) {
           let error = readErr as BusinessError;
@@ -885,6 +975,8 @@ export class OppoEarphoneManager {
               this.queryAncMode();
               this.queryGameMode();
               this.querySpatialAudio();
+              this.queryDualDevice();
+              this.queryEqPreset();
               this.startPeriodicQuery();
             }, 200);
           }, 200);
@@ -1230,43 +1322,69 @@ export class OppoEarphoneManager {
     if (reportType !== 0x02) return;
     const count = data[payloadStart + 1];
     if (payLen < 2 + count * 2) return;
-    let left = WearState.DISCONNECTED;
-    let right = WearState.DISCONNECTED;
-    let caseState = WearState.DISCONNECTED;
+    // 从当前状态出发，仅更新上报的组件（参考OppoPods mergeWearStatus策略）
+    let left: WearState | null = null;
+    let right: WearState | null = null;
+    let caseState: WearState | null = null;
     for (let j = 0; j < count; j++) {
       const idx = payloadStart + 2 + j * 2;
       if (idx + 1 >= data.length) break;
       const component = data[idx];
-      const state = data[idx + 1];
+      const rawVal = data[idx + 1];
+      // 仅接受已知的佩戴状态值，未知值忽略
+      const state = this.toWearState(rawVal);
+      if (state === null) {
+        console.warn(`[OppoManager] 忽略未知佩戴状态值: component=${component}, value=${rawVal}`);
+        continue;
+      }
       switch (component) {
-        case 0x01: left = state as WearState; break;
-        case 0x02: right = state as WearState; break;
-        case 0x03: caseState = state as WearState; break;
+        case 0x01: left = state; break;
+        case 0x02: right = state; break;
+        case 0x03: caseState = state; break;
       }
     }
-    const newStatus: WearStatus = { left, right, case: caseState };
-    if (JSON.stringify(this.currentWearStatus) !== JSON.stringify(newStatus)) {
-      const oldLeft = this.currentWearStatus.left;
-      const oldRight = this.currentWearStatus.right;
-      this.currentWearStatus = newStatus;
-      this.notifyWearUpdate(newStatus);
-      console.info(`[OppoManager] 佩戴状态: L=${left}, R=${right}, C=${caseState}`);
-      // 佩戴状态发生重大变化时，设备会自动切换ANC模式但不会主动上报
-      // 需延迟查询ANC状态以保持UI同步
-      const wasWearing = (oldLeft === WearState.WEARING || oldRight === WearState.WEARING);
-      const isNowWearing = (left === WearState.WEARING || right === WearState.WEARING);
-      const wasNotWearing = (oldLeft !== WearState.WEARING && oldRight !== WearState.WEARING);
-      const isNowNotWearing = (left !== WearState.WEARING && right !== WearState.WEARING);
-      if ((wasWearing && isNowNotWearing) || (wasNotWearing && isNowWearing)) {
-        if (wasWearing && isNowNotWearing) {
-          console.info('[OppoManager] 耳机入盒/取下，延迟查询ANC状态...');
-        } else {
-          console.info('[OppoManager] 耳机重新佩戴，延迟查询ANC状态...');
-        }
-        setTimeout(() => {
-          this.queryAncMode();
-        }, 1000);
+    // 合并策略：有上报的组件用新值，未上报的保留旧值
+    const oldLeft = this.currentWearStatus.left;
+    const oldRight = this.currentWearStatus.right;
+    const oldCase = this.currentWearStatus.case;
+    const newLeft = left !== null ? left : oldLeft;
+    const newRight = right !== null ? right : oldRight;
+    const newCase = caseState !== null ? caseState : oldCase;
+    if (newLeft === oldLeft && newRight === oldRight && newCase === oldCase) {
+      return; // 无变化，跳过
+    }
+    const newStatus: WearStatus = { left: newLeft, right: newRight, case: newCase };
+    this.currentWearStatus = newStatus;
+    this.notifyWearUpdate(newStatus);
+    console.info(`[OppoManager] 佩戴状态: L=${newLeft}, R=${newRight}, C=${newCase}`);
+    // 佩戴状态发生重大变化时，设备会自动切换ANC模式但不会主动上报
+    // 需延迟查询ANC状态以保持UI同步
+    const wasWearing = (oldLeft === WearState.WEARING || oldRight === WearState.WEARING);
+    const isNowWearing = (newLeft === WearState.WEARING || newRight === WearState.WEARING);
+    const wasNotWearing = (oldLeft !== WearState.WEARING && oldRight !== WearState.WEARING);
+    const isNowNotWearing = (newLeft !== WearState.WEARING && newRight !== WearState.WEARING);
+    if ((wasWearing && isNowNotWearing) || (wasNotWearing && isNowWearing)) {
+      if (wasWearing && isNowNotWearing) {
+        console.info('[OppoManager] 耳机入盒/取下，延迟查询ANC状态...');
+      } else {
+        console.info('[OppoManager] 耳机重新佩戴，延迟查询ANC状态...');
       }
+      setTimeout(() => {
+        this.queryAncMode();
+      }, 1000);
+    }
+  }
+
+  /**
+   * 将原始值转换为 WearState，未知值返回 null
+   */
+  private toWearState(value: number): WearState | null {
+    switch (value) {
+      case 0x00: return WearState.DISCONNECTED;
+      case 0x04: return WearState.IN_CASE;
+      case 0x05: return WearState.REMOVED;
+      case 0x07: return WearState.WEARING;
+      default: return null;
     }
   }
 
@@ -1303,6 +1421,15 @@ export class OppoEarphoneManager {
           this.spatialAudioEnabled = enabled;
           this.notifySpatialAudioUpdate(enabled);
           console.info(`[OppoManager] 空间音频: ${enabled ? '开启' : '关闭'}`);
+        }
+      }
+      if (data[i] === 0x11) {
+        const enabled = data[i + 1] === 0x01;
+        console.info(`[OppoManager] parseGameMode 找到 0x11 特征值，双设备连接=${enabled ? '开启' : '关闭'}`);
+        if (this.dualDeviceEnabled !== enabled) {
+          this.dualDeviceEnabled = enabled;
+          this.notifyDualDeviceUpdate(enabled);
+          console.info(`[OppoManager] 双设备连接: ${enabled ? '开启' : '关闭'}`);
         }
       }
     }
@@ -1350,6 +1477,66 @@ export class OppoEarphoneManager {
             this.notifySpatialAudioUpdate(enabled);
           }
         }
+      }
+    }
+  }
+
+  /**
+   * 解析功能设置响应（cmd=0x8403），处理双设备连接(0x11)等特征
+   */
+  private parseSwitchFeatureResponse(data: Uint8Array): void {
+    if (data.length < 9 || data[0] !== 0xAA) return;
+    const cmdLow = data[4];
+    const cmdHigh = data[5];
+    const cmd = cmdLow | (cmdHigh << 8);
+    if (cmd !== 0x8403) return;
+    const payLen = (data[7] | (data[8] << 8));
+    const payloadStart = 9;
+    if (data.length < payloadStart + payLen || payLen < 2) return;
+    for (let i = payloadStart; i < payloadStart + payLen - 1; i++) {
+      if (data[i] === 0x11) {
+        const enabled = data[i + 1] === 0x01;
+        console.info(`[OppoManager] 双设备连接开关响应(0x8403,0x11): ${enabled ? '开启' : '关闭'}`);
+        if (this.dualDeviceEnabled !== enabled) {
+          this.dualDeviceEnabled = enabled;
+          this.notifyDualDeviceUpdate(enabled);
+        }
+      }
+    }
+  }
+
+  /**
+   * 解析 EQ 大师调音预设
+   * 处理 cmd=0x810F（查询响应: [status, preset]）和 cmd=0x0504（主动通知: [preset]）
+   */
+  private parseEqPreset(data: Uint8Array): void {
+    if (data.length < 9 || data[0] !== 0xAA) return;
+    const cmdLow = data[4];
+    const cmdHigh = data[5];
+    const cmd = cmdLow | (cmdHigh << 8);
+    const payLen = (data[7] | (data[8] << 8));
+    const payloadStart = 9;
+    if (data.length < payloadStart + payLen) return;
+    let presetId: number = -1;
+
+    if (cmd === 0x0504 && payLen >= 1) {
+      // 主动通知: payload[0] = preset
+      presetId = data[payloadStart];
+    } else if (cmd === 0x810F && payLen >= 2) {
+      // 查询响应: payload[0]=status(0=success), payload[1]=preset
+      const status = data[payloadStart];
+      if (status === 0x00) {
+        presetId = data[payloadStart + 1];
+      }
+    } else {
+      return;
+    }
+
+    if (presetId >= 0 && OppoEarphoneManager.EQ_PRESET_IDS.includes(presetId)) {
+      console.info(`[OppoManager] EQ预设响应(cmd=0x${cmd.toString(16)}): ${OppoEarphoneManager.EQ_PRESETS[presetId]} (id=${presetId})`);
+      if (this.currentEqPreset !== presetId) {
+        this.currentEqPreset = presetId;
+        this.notifyEqPresetUpdate(presetId);
       }
     }
   }
