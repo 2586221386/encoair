@@ -4,6 +4,7 @@ import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { workScheduler } from '@kit.BackgroundTasksKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { deviceInfo } from '@kit.BasicServicesKit';
 import { OppoEarphoneManager } from '../manager/OppoEarphoneManager';
 
 const DOMAIN = 0x0000;
@@ -41,6 +42,11 @@ export default class EntryAbility extends UIAbility {
 
     // 判断启动来源:如果是被外部应用(如"智慧生活")唤醒,显示弹窗;否则显示主界面
     let isExternalWake = this.checkIfExternalWake();
+
+    // 根据API版本选择对应的主页面（API23+用HdsTabs悬浮导航，API22用常规Tabs）
+    let apiVer: number = deviceInfo.sdkApiVersion;
+    let mainPage: string = apiVer >= 23 ? 'pages/Index' : 'pages/IndexOld';
+    hilog.info(DOMAIN, 'testTag', '系统API版本: %{public}d, 加载页面: %{public}s', apiVer, mainPage);
     
     if (isExternalWake) {
       hilog.info(DOMAIN, 'testTag', '检测到外部唤醒,加载弹窗页面');
@@ -57,8 +63,8 @@ export default class EntryAbility extends UIAbility {
       });
     } else {
       hilog.info(DOMAIN, 'testTag', '用户手动启动,加载主界面');
-      // 加载主界面
-      windowStage.loadContent('pages/Index', (err) => {
+      // 根据API版本加载对应主页面
+      windowStage.loadContent(mainPage, (err) => {
         if (err.code) {
           hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
           return;

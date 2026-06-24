@@ -6,12 +6,12 @@
         "type": "HarmonyOS",
         "material": {
           "storeFile": "E:/huaweikaifa/证书文件/Hzx2586221386.p12",
-          "storePassword": "0000001F841E38114218B1B69462CD7732F7FDE97292178F913E3AC2B4E13CED6404AFF3643B9130263B60958D50C0",
+          "storePassword": "0000001F4464F60CEAFBB2FEDFF1075A061D7DD4DEB7A1DE9D9DC395303DC7A9F11473AE32461336DA0E55514E8F05",
           "keyAlias": "hzx2586221386",
-          "keyPassword": "0000001FB4504967BA9F5F3E9F31615D9492179F356CD93E0528A674FD69E6965C81071E5AA96DD65017439106919B",
+          "keyPassword": "0000001F6EA932924D568385AD774092B929A57878B74252337E873ABAC31FC035ECCE8D4EB476E6F0D52336794A10",
           "signAlg": "SHA256withECDSA",
-          "profile": "E:/huaweikaifa/证书文件/OPPO电量监控调试Debug.p7b",
-          "certpath": "E:/huaweikaifa/证书文件/OPPO电量监控调试.cer"
+          "profile": "E:/huaweikaifa/证书文件/OPPO电量监控Release.p7b",
+          "certpath": "E:/huaweikaifa/证书文件/OPPO电量监控.cer"
         }
       }
     ],
@@ -19,7 +19,7 @@
       {
         "name": "default",
         "signingConfig": "default",
-        "targetSdkVersion": "6.0.2(22)",
+        "targetSdkVersion": "6.1.0(23)",
         "compatibleSdkVersion": "6.0.2(22)",
         "runtimeOS": "HarmonyOS",
         "buildOption": {

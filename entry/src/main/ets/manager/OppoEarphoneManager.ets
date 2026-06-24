@@ -221,21 +221,25 @@ export class OppoEarphoneManager {
   }
 
   /**
-   * 设置回调函数
+   * 检查是否已有活跃的状态回调（主页面是否在运行）
+   * 预览弹窗用此判断是否需要自己接管连接，避免覆盖主页面回调
    */
-  setCallbacks(batteryCb: (info: BatteryInfo) => void, statusCb: (status: ConnectionStatus) => void, rawCb?: (hex: string) => void,
-    ancCb?: (mode: number) => void, wearCb?: (wear: WearStatus) => void, gameCb?: (enabled: boolean) => void,
-    spatialAudioCb?: (enabled: boolean) => void, dualCb?: (enabled: boolean) => void, eqCb?: (preset: number) => void): void {
-    this.batteryCallback = batteryCb;
-    this.statusCallback = statusCb;
-    this.rawDataCallback = rawCb ?? null;
-    this.ancCallback = ancCb ?? null;
-    this.wearCallback = wearCb ?? null;
-    this.gameModeCallback = gameCb ?? null;
-    this.spatialAudioCallback = spatialAudioCb ?? null;
-    this.dualDeviceCallback = dualCb ?? null;
-    this.eqPresetCallback = eqCb ?? null;
+  hasActiveCallbacks(): boolean {
+    return this.statusCallback !== null;
   }
+
+  /**
+   * 设置回调函数（独立注册，替代旧版多参数 setCallbacks）
+   */
+  setBatteryCallback(cb: (info: BatteryInfo) => void): void { this.batteryCallback = cb; }
+  setStatusCallback(cb: (status: ConnectionStatus) => void): void { this.statusCallback = cb; }
+  setRawDataCallback(cb: (hex: string) => void): void { this.rawDataCallback = cb; }
+  setAncCallback(cb: (mode: number) => void): void { this.ancCallback = cb; }
+  setWearCallback(cb: (wear: WearStatus) => void): void { this.wearCallback = cb; }
+  setGameModeCallback(cb: (enabled: boolean) => void): void { this.gameModeCallback = cb; }
+  setSpatialAudioCallback(cb: (enabled: boolean) => void): void { this.spatialAudioCallback = cb; }
+  setDualDeviceCallback(cb: (enabled: boolean) => void): void { this.dualDeviceCallback = cb; }
+  setEqPresetCallback(cb: (preset: number) => void): void { this.eqPresetCallback = cb; }
 
   /**
    * 检查系统蓝牙音频配置是否已连接
@@ -268,15 +272,7 @@ export class OppoEarphoneManager {
         let state = connection.getProfileConnectionState();
         if (state !== constant.ProfileConnectionState.STATE_CONNECTED) {
           console.info('[OppoManager] 系统音频配置已断开，清理SPP连接并重启监听...');
-          // 先停止所有定时器和后台服务（不停止持续监听）
-          this.stopDisconnectMonitor();
-          this.stopPeriodicQuery();
-          this.cancelReconnect();
-          this.stopBackgroundService();
-          this.cleanup(false);
-          this.notifyStatus('disconnected');
-          // 系统断开后自动重启监听，等待耳机重连
-          this.startContinuousMonitor();
+          this.handleNaturalDisconnect('系统音频配置已断开，SPP连接已清理');
         }
       } catch (err) {
         let error = err as BusinessError;
@@ -373,49 +369,8 @@ export class OppoEarphoneManager {
       return;
     }
     console.info('[OppoManager] 开始监听扫描...');
-    this.notifyStatus('scanning');
-    const scanTimeout = setTimeout(() => {
-      if (this.isScanning) {
-        console.info('[OppoManager] 监听扫描超时,停止本次扫描');
-        this.stopScan();
-        this.notifyStatus('disconnected');
-        // 扫描超时未连接，更新桌面卡片为断开状态
-        this.saveBatteryToWidget();
-      }
-    }, 10000);
-    ble.on('BLEDeviceFind', (devices: Array<ble.ScanResult>) => {
-      for (let device of devices) {
-        let deviceName = device.deviceName;
-        let deviceMac = device.deviceId;
-        if (deviceName && deviceName.includes('OPPO Enco')) {
-          console.info(`[OppoManager] 监听到OPPO耳机! 名字: ${deviceName}, MAC: ${deviceMac}`);
-          // 检查系统音频配置是否已连接，避免抢占系统音频连接
-          if (!this.isSystemAudioConnected()) {
-            console.info('[OppoManager] 系统音频未连接，跳过SPP连接，等待下一轮扫描');
-            return;
-          }
-          clearTimeout(scanTimeout);
-          this.stopScan();
-          this.connectToEarphone(deviceMac);
-          break;
-        }
-      }
-    });
-    try {
-      ble.startBLEScan(null, {
-        interval: 0,
-        dutyMode: ble.ScanDuty.SCAN_MODE_LOW_LATENCY,
-        matchMode: ble.MatchMode.MATCH_MODE_AGGRESSIVE
-      });
-      this.isScanning = true;
-    } catch (err) {
-      let error = err as BusinessError;
-      console.error(`[OppoManager] 监听扫描失败: ${error.message}`);
-      clearTimeout(scanTimeout);
-      this.isScanning = false;
-      this.notifyStatus('disconnected');
-      this.scheduleNextMonitorCycle();
-    }
+    this.startScan();
+    this.scheduleNextMonitorCycle();
   }
 
   /**
@@ -449,8 +404,8 @@ export class OppoEarphoneManager {
     if (this.savedMac) {
       // 先检查系统音频是否已连接
       if (!this.isSystemAudioConnected()) {
-        console.info(`[OppoManager] 已保存设备 ${this.savedMac} 存在但系统音频未连接，等待系统先建立音频连接`);
-        this.startScan();
+        console.info(`[OppoManager] 已保存设备 ${this.savedMac} 存在但系统音频未连接，启动持续监听等待`);
+        this.startContinuousMonitor();
         return;
       }
       console.info(`[OppoManager] 尝试连接已保存设备: ${this.savedMac}`);
@@ -459,8 +414,8 @@ export class OppoEarphoneManager {
       // 先检查系统已配对设备
       console.info('[OppoManager] 无已保存设备,检查系统已配对设备...');
       if (!this.tryConnectFromPairedDevices()) {
-        console.info('[OppoManager] 开始扫描...');
-        this.startScan();
+        console.info('[OppoManager] 启动持续监听...');
+        this.startContinuousMonitor();
       }
     }
   }
@@ -508,9 +463,9 @@ export class OppoEarphoneManager {
       if (this.savedMac) {
         this.connectToEarphone(this.savedMac);
       } else {
-        // 重连时也检查系统已配对设备
+        // 重连时也检查系统已配对设备，无结果则启动持续监听
         if (!this.tryConnectFromPairedDevices()) {
-          this.startScan();
+          this.startContinuousMonitor();
         }
       }
     }, this.RECONNECT_DELAY_MS);
@@ -567,13 +522,7 @@ export class OppoEarphoneManager {
       let errCode: number = Number(error.code);
       if (errCode === 2901054) {
         console.info('[OppoManager] 检测到SPP IO错误(2901054)，自然断开');
-        this.stopDisconnectMonitor();
-        this.stopPeriodicQuery();
-        this.cancelReconnect();
-        this.stopBackgroundService();
-        this.cleanup(false);
-        this.notifyStatus('disconnected');
-        this.startContinuousMonitor();
+        this.handleNaturalDisconnect('SPP IO错误(2901054)，自然断开');
       }
     }
   }
@@ -756,6 +705,15 @@ export class OppoEarphoneManager {
     }
   }
 
+  // ============== 工具方法 ==============
+
+  /**
+   * 异步延迟（替代嵌套 setTimeout）
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms));
+  }
+
   /**
    * 字节数组转 HEX 字符串
    */
@@ -794,20 +752,39 @@ export class OppoEarphoneManager {
   }
 
   /**
-   * 开始扫描周围的 OPPO 耳机（使用BLE扫描）
+   * 开始扫描周围的 OPPO 耳机（统一BLE扫描入口）
+   * 包含系统音频检查 + 超时保护 + 卡片状态更新
+   * 由 startMonitorCycle / startAutoConnect / scheduleReconnect 共同调用
    */
   startScan(): void {
-    if (this.isScanning) return;
+    if (this.isScanning || this.connectedMac) return;
     console.info('[OppoManager] 开始扫描周围的 OPPO 耳机...');
     this.notifyStatus('scanning');
     this.isScanning = true;
     this.cancelReconnect();
+
+    const scanTimeout = setTimeout(() => {
+      if (this.isScanning) {
+        console.info('[OppoManager] 扫描超时,停止本次扫描');
+        this.stopScan();
+        this.notifyStatus('disconnected');
+        // 扫描超时未连接，更新桌面卡片为断开状态
+        this.saveBatteryToWidget();
+      }
+    }, 10000);
+
     ble.on('BLEDeviceFind', (devices: Array<ble.ScanResult>) => {
       for (let device of devices) {
         let deviceName = device.deviceName;
         let deviceMac = device.deviceId;
         if (deviceName && deviceName.includes('OPPO Enco')) {
           console.info(`[OppoManager] 发现目标耳机! 名字: ${deviceName}, MAC: ${deviceMac}`);
+          // 检查系统音频配置是否已连接，避免抢占系统音频连接
+          if (!this.isSystemAudioConnected()) {
+            console.info('[OppoManager] 系统音频未连接，跳过SPP连接，等待下一轮扫描');
+            return;
+          }
+          clearTimeout(scanTimeout);
           this.stopScan();
           this.connectToEarphone(deviceMac);
           break;
@@ -823,6 +800,7 @@ export class OppoEarphoneManager {
     } catch (err) {
       let error = err as BusinessError;
       console.error(`[OppoManager] 启动扫描失败: ${error.message}`);
+      clearTimeout(scanTimeout);
       this.isScanning = false;
       this.notifyStatus('disconnected');
     }
@@ -919,13 +897,7 @@ export class OppoEarphoneManager {
             // 空数据表示蓝牙连接已自然断开（耳机断电/超出范围）
             if (valueArray.length === 0) {
               console.info('[OppoManager] sppRead收到空数据，检测到自然断开');
-              this.stopDisconnectMonitor();
-              this.stopPeriodicQuery();
-              this.cancelReconnect();
-              this.stopBackgroundService();
-              this.cleanup(false);
-              this.notifyStatus('disconnected');
-              this.startContinuousMonitor();
+              this.handleNaturalDisconnect('sppRead收到空数据，自然断开');
               return;
             }
             if (valueArray.length >= 9 && valueArray[0] === 0xAA) {
@@ -943,7 +915,7 @@ export class OppoEarphoneManager {
             // 解析佩戴状态
             this.parseWearStatus(valueArray);
             // 解析游戏模式
-            this.parseGameMode(valueArray);
+            this.parseFeatureFlags(valueArray);
             // 解析空间音频
             this.parseSpatialAudio(valueArray);
             // 解析功能设置响应 (0x8403)
@@ -966,20 +938,18 @@ export class OppoEarphoneManager {
         this.startDisconnectMonitor();
 
         // 连接成功后启动查询（参考安卓 connectRfcomm 流程）
-        setTimeout(() => {
+        setTimeout(async () => {
           this.enableStatusReport();
-          setTimeout(() => {
-            this.queryStatus();
-            setTimeout(() => {
-              this.queryBattery();
-              this.queryAncMode();
-              this.queryGameMode();
-              this.querySpatialAudio();
-              this.queryDualDevice();
-              this.queryEqPreset();
-              this.startPeriodicQuery();
-            }, 200);
-          }, 200);
+          await this.delay(200);
+          this.queryStatus();
+          await this.delay(200);
+          this.queryBattery();
+          this.queryAncMode();
+          this.queryGameMode();
+          this.querySpatialAudio();
+          this.queryDualDevice();
+          this.queryEqPreset();
+          this.startPeriodicQuery();
         }, 300);
       });
 
@@ -1035,6 +1005,22 @@ export class OppoEarphoneManager {
       // 用户主动断开或自然断开：推送断开状态到卡片
       this.notifyBatteryUpdate();
     }
+  }
+
+  /**
+   * 统一处理自然断开（系统音频断开/SPP空数据/SPP IO错误）
+   * 清理所有定时器和后台服务，通知UI断开，自动重启监听等待重连
+   */
+  private handleNaturalDisconnect(reason: string): void {
+    console.info(`[OppoManager] ${reason}`);
+    this.stopDisconnectMonitor();
+    this.stopPeriodicQuery();
+    this.cancelReconnect();
+    this.stopBackgroundService();
+    this.cleanup(false);
+    this.notifyStatus('disconnected');
+    // 系统断开后自动重启监听，等待耳机重连
+    this.startContinuousMonitor();
   }
 
   // ============== 数据解析（与 BLE 版本完全相同） ==============
@@ -1389,9 +1375,10 @@ export class OppoEarphoneManager {
   }
 
   /**
-   * 解析游戏模式（cmd=0x810D 响应，扫描 0x28 游戏模式 和 0x1B 空间音频特征）
+   * 解析特性标志（cmd=0x810D 响应）
+   * 扫描 0x28(游戏模式) / 0x1B(空间音频) / 0x11(双设备连接)
    */
-  private parseGameMode(data: Uint8Array): void {
+  private parseFeatureFlags(data: Uint8Array): void {
     if (data.length < 9 || data[0] !== 0xAA) return;
     const cmdLow = data[4];
     const cmdHigh = data[5];
@@ -1401,13 +1388,13 @@ export class OppoEarphoneManager {
     const payloadStart = 9;
     if (data.length < payloadStart + payLen) return;
     if (payLen < 4) {
-      console.info(`[OppoManager] parseGameMode 简短响应，跳过 (payLen=${payLen})`);
+      console.info(`[OppoManager] parseFeatureFlags 简短响应，跳过 (payLen=${payLen})`);
       return;
     }
     for (let i = payloadStart; i < payloadStart + payLen - 1; i++) {
       if (data[i] === 0x28) {
         const enabled = data[i + 1] === 0x01;
-        console.info(`[OppoManager] parseGameMode 找到 0x28 特征值，游戏模式=${enabled ? '开启' : '关闭'}`);
+        console.info(`[OppoManager] parseFeatureFlags 找到 0x28 特征值，游戏模式=${enabled ? '开启' : '关闭'}`);
         if (this.gameModeEnabled !== enabled) {
           this.gameModeEnabled = enabled;
           this.notifyGameModeUpdate(enabled);
@@ -1416,7 +1403,7 @@ export class OppoEarphoneManager {
       }
       if (data[i] === 0x1B) {
         const enabled = data[i + 1] === 0x01;
-        console.info(`[OppoManager] parseGameMode 找到 0x1B 特征值，空间音频=${enabled ? '开启' : '关闭'}`);
+        console.info(`[OppoManager] parseFeatureFlags 找到 0x1B 特征值，空间音频=${enabled ? '开启' : '关闭'}`);
         if (this.spatialAudioEnabled !== enabled) {
           this.spatialAudioEnabled = enabled;
           this.notifySpatialAudioUpdate(enabled);
@@ -1425,7 +1412,7 @@ export class OppoEarphoneManager {
       }
       if (data[i] === 0x11) {
         const enabled = data[i + 1] === 0x01;
-        console.info(`[OppoManager] parseGameMode 找到 0x11 特征值，双设备连接=${enabled ? '开启' : '关闭'}`);
+        console.info(`[OppoManager] parseFeatureFlags 找到 0x11 特征值，双设备连接=${enabled ? '开启' : '关闭'}`);
         if (this.dualDeviceEnabled !== enabled) {
           this.dualDeviceEnabled = enabled;
           this.notifyDualDeviceUpdate(enabled);

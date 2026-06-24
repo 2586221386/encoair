@@ -49,10 +49,21 @@ struct PopupWindow {
       this.caseCharging = info.caseCharging;
       this.loadingText = '已连接';
       // 不替换回调、不重新连接，避免影响主页面
+    } else if (this.manager.hasActiveCallbacks()) {
+      // 主页面正在运行（预览模式），不接管连接，只读取当前扫描状态快照
+      console.info('[PopupWindow] 主页面监听运行中,不接管连接,读取快照');
+      let info = this.manager.getCurrentBatteryInfo();
+      this.leftBattery = info.leftBattery;
+      this.leftCharging = info.leftCharging;
+      this.rightBattery = info.rightBattery;
+      this.rightCharging = info.rightCharging;
+      this.caseBattery = info.caseBattery;
+      this.caseCharging = info.caseCharging;
+      this.loadingText = '等待连接...';
+      // 不替换回调、不启动监听，避免干扰主页面
     } else {
       // 未连接（外部唤醒场景），走完整连接流程
-      this.manager.setCallbacks(
-        (info: BatteryInfo) => {
+      this.manager.setBatteryCallback((info: BatteryInfo) => {
           console.info(`[PopupWindow] 收到电量更新: 左=${info.leftBattery}, 右=${info.rightBattery}, 仓=${info.caseBattery}`);
           if (info.leftBattery < 0 && info.rightBattery < 0 && info.caseBattery < 0) {
             this.leftBattery = -1;
@@ -83,8 +94,8 @@ struct PopupWindow {
               }, 3000);
             }
           }
-        },
-        (status: ConnectionStatus) => {
+        });
+      this.manager.setStatusCallback((status: ConnectionStatus) => {
           this.connectionStatus = status;
           console.info(`[PopupWindow] 连接状态: ${status}`);
           switch (status) {
@@ -104,8 +115,7 @@ struct PopupWindow {
               this.loadingText = '等待连接...';
               break;
           }
-        }
-      );
+        });
       this.manager.startContinuousMonitor();
 
       // 超时保护

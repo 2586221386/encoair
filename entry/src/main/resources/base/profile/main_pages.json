@@ -1,6 +1,7 @@
 {
   "src": [
     "pages/Index",
+    "pages/IndexOld",
     "pages/PopupWindow",
     "pages/HelpPage"
   ]

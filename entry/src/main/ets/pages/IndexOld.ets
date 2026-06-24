@@ -1,7 +1,6 @@
 import { OppoEarphoneManager, BatteryInfo, ConnectionStatus, WearState, WearStatus, getAncModeName } from '../manager/OppoEarphoneManager';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit';
 import { SettingsPage } from './SettingsPage';
 
 /**
@@ -132,7 +131,6 @@ struct Index {
   @StorageProp('statusBarHeight') statusBarHeight: number = 0;
   // TabBar
   @State currentIndex: number = 0;
-  private tabsController: HdsTabsController = new HdsTabsController();
 
   private manager: OppoEarphoneManager = OppoEarphoneManager.getInstance();
 
@@ -312,7 +310,7 @@ struct Index {
   }
 
   build() {
-    HdsTabs({ controller: this.tabsController }) {
+    Tabs({ barPosition: BarPosition.End, index: this.currentIndex }) {
       TabContent() {
         Column() {
           Scroll() {
@@ -336,7 +334,7 @@ struct Index {
               this.TipSection();
             }
             .width('100%')
-            .padding({ top: this.statusBarHeight, bottom: 100 })
+            .padding({ top: this.statusBarHeight })
           }
           .layoutWeight(1)
           .scrollBar(BarState.Off)
@@ -353,20 +351,8 @@ struct Index {
       }
       .tabBar(this.TabBarItem('⚙️', '设置', 1))
     }
-    .barOverlap(true)
-    .vertical(false)
-    .barPosition(BarPosition.End)
-    .barFloatingStyle({
-      barBottomMargin: 28,
-      gradientMask: {
-        maskHeight: 88,
-        maskColor: Color.Transparent
-      },
-      systemMaterialEffect: {
-        materialType: hdsMaterial.MaterialType.ADAPTIVE,
-        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-      }
-    })
+    .barHeight(56)
+    .barMode(BarMode.Fixed)
     .width('100%')
     .height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
