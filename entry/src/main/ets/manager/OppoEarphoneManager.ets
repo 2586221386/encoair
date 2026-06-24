@@ -1273,15 +1273,18 @@ export class OppoEarphoneManager {
         const val2 = (i + 3 < payloadEnd) ? data[i + 3] : 0x00;
         let mode = 1;
         console.info(`[OppoManager] ANC解析: val1=0x${val1.toString(16).padStart(2, '0')}, val2=0x${val2.toString(16).padStart(2, '0')}`);
-        if (val1 === 0x02 && val2 === 0x00) mode = 2;
+        // 匹配顺序参照 OppoPods-2.0.7 AncModeParser：
+        // 0x08=关闭, 0x02=降噪, 0x80=智能/0x40=轻度/0x20=中度/0x10=深度, 0x04=通透, 0x00+0x01=通透, 0x00+0x08=自适应
+        if (val1 === 0x08 && val2 === 0x00) mode = 1;
+        else if (val1 === 0x80 && val2 === 0x00) mode = 5;
+        else if (val1 === 0x40 && val2 === 0x00) mode = 6;
+        else if (val1 === 0x20 && val2 === 0x00) mode = 7;
+        else if (val1 === 0x10 && val2 === 0x00) mode = 8;
+        else if (val1 === 0x02 && val2 === 0x00) mode = 2;
         else if (val1 === 0x04 && val2 === 0x00) mode = 3;
         else if (val1 === 0x00 && val2 === 0x01) mode = 3;
         else if (val1 === 0x00 && val2 === 0x08) mode = 4;
-        else if (val1 === 0x80) mode = 5;
-        else if (val1 === 0x40) mode = 6;
-        else if (val1 === 0x20) mode = 7;
-        else if (val1 === 0x10) mode = 8;
-        else if (val1 === 0x01) mode = 1;
+        else if (val1 === 0x01 && val2 === 0x00) mode = 1;
         if (this.currentAncMode !== mode) {
           this.currentAncMode = mode;
           this.notifyAncUpdate(mode);
@@ -1343,18 +1346,16 @@ export class OppoEarphoneManager {
     this.currentWearStatus = newStatus;
     this.notifyWearUpdate(newStatus);
     console.info(`[OppoManager] 佩戴状态: L=${newLeft}, R=${newRight}, C=${newCase}`);
-    // 佩戴状态发生重大变化时，设备会自动切换ANC模式但不会主动上报
+    // 任意单耳佩戴状态变化时，耳机可能自动切换ANC模式但不主动上报
     // 需延迟查询ANC状态以保持UI同步
-    const wasWearing = (oldLeft === WearState.WEARING || oldRight === WearState.WEARING);
-    const isNowWearing = (newLeft === WearState.WEARING || newRight === WearState.WEARING);
-    const wasNotWearing = (oldLeft !== WearState.WEARING && oldRight !== WearState.WEARING);
-    const isNowNotWearing = (newLeft !== WearState.WEARING && newRight !== WearState.WEARING);
-    if ((wasWearing && isNowNotWearing) || (wasNotWearing && isNowWearing)) {
-      if (wasWearing && isNowNotWearing) {
-        console.info('[OppoManager] 耳机入盒/取下，延迟查询ANC状态...');
-      } else {
-        console.info('[OppoManager] 耳机重新佩戴，延迟查询ANC状态...');
-      }
+    const leftWearChanged = (oldLeft === WearState.WEARING) !== (newLeft === WearState.WEARING);
+    const rightWearChanged = (oldRight === WearState.WEARING) !== (newRight === WearState.WEARING);
+    if (leftWearChanged || rightWearChanged) {
+      const wearingToNot = (oldLeft === WearState.WEARING && newLeft !== WearState.WEARING)
+                        || (oldRight === WearState.WEARING && newRight !== WearState.WEARING);
+      console.info(wearingToNot
+        ? '[OppoManager] 耳机入盒/取下，延迟查询ANC状态...'
+        : '[OppoManager] 耳机重新佩戴，延迟查询ANC状态...');
       setTimeout(() => {
         this.queryAncMode();
       }, 1000);

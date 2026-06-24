@@ -77,6 +77,18 @@
         ]
       },
       {
+        "name": "BatteryFormAbility1x2",
+        "srcEntry": "./ets/formability/BatteryFormAbility1x2.ets",
+        "type": "form",
+        "description": "$string:widget_1x2_desc",
+        "metadata": [
+          {
+            "name": "ohos.extension.form",
+            "resource": "$profile:form_config_1x2"
+          }
+        ]
+      },
+      {
         "name": "WorkSchedulerExtension",
         "srcEntry": "./ets/extension/WorkSchedulerExtension.ets",
         "type": "workScheduler",

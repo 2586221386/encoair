@@ -29,6 +29,14 @@
       "value": "显示Air5 Pro左耳、右耳、充电仓电量"
     },
     {
+      "name": "widget_1x2_name",
+      "value": "耳机电量(精简)"
+    },
+    {
+      "name": "widget_1x2_desc",
+      "value": "显示Air5 Pro通用电量，无需唤醒应用"
+    },
+    {
       "name": "work_scheduler_label",
       "value": "耳机电量后台刷新"
     },
