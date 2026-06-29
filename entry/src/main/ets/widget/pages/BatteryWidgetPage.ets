@@ -16,19 +16,26 @@ struct BatteryWidgetPage {
   @LocalStorageProp('caseCharging') caseCharging: boolean = false;
   @LocalStorageProp('lastUpdated') lastUpdated: string = '--:--';
   @LocalStorageProp('connected') connected: boolean = false;
+  @LocalStorageProp('isDarkMode') isDarkMode: boolean = false;
+
+  private get widgetBg(): string { return this.isDarkMode ? '#1A1D2E' : '#FFFFFF'; }
+  private get textPrimary(): string { return this.isDarkMode ? '#E8E8EC' : '#1A1A2E'; }
+  private get textSecondary(): string { return this.isDarkMode ? '#9999AA' : '#555568'; }
+  private get textMuted(): string { return this.isDarkMode ? '#777788' : '#90909A'; }
+  private get progressBg(): string { return this.isDarkMode ? '#2A2A3E' : '#E8E8EC'; }
 
   /**
    * 根据电量返回颜色
    */
   getBatteryColor(battery: number): string {
     if (battery < 0) {
-      return '#666666';
+      return this.isDarkMode ? '#666666' : '#999999';
     }
     if (battery < 20) {
-      return '#FF4444';
+      return this.isDarkMode ? '#FF4444' : '#D32F2F';
     }
     if (battery < 60) {
-      return '#FF9800';
+      return this.isDarkMode ? '#FF9800' : '#E65100';
     }
     return '#4CAF50';
   }
@@ -48,7 +55,7 @@ struct BatteryWidgetPage {
         Text('Air5 Pro')
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#333333')
+          .fontColor(this.textPrimary)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
@@ -68,13 +75,13 @@ struct BatteryWidgetPage {
               .width(42)
               .height(42)
               .color(this.getBatteryColor(this.leftBattery))
-              .backgroundColor('#E8E8E8')
+              .backgroundColor(this.progressBg)
               .style({ strokeWidth: 4 })
 
             Text(this.getBatteryText(this.leftBattery))
               .fontSize(11)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#333333')
+              .fontColor(this.textPrimary)
           }
           .width(42)
           .height(42)
@@ -82,7 +89,7 @@ struct BatteryWidgetPage {
 
           Text('左耳')
             .fontSize(10)
-            .fontColor('#888888')
+            .fontColor(this.textSecondary)
             .margin({ top: 3 })
         }
         .layoutWeight(1)
@@ -99,13 +106,13 @@ struct BatteryWidgetPage {
               .width(42)
               .height(42)
               .color(this.getBatteryColor(this.rightBattery))
-              .backgroundColor('#E8E8E8')
+              .backgroundColor(this.progressBg)
               .style({ strokeWidth: 4 })
 
             Text(this.getBatteryText(this.rightBattery))
               .fontSize(11)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#333333')
+              .fontColor(this.textPrimary)
           }
           .width(42)
           .height(42)
@@ -113,7 +120,7 @@ struct BatteryWidgetPage {
 
           Text('右耳')
             .fontSize(10)
-            .fontColor('#888888')
+            .fontColor(this.textSecondary)
             .margin({ top: 3 })
         }
         .layoutWeight(1)
@@ -130,13 +137,13 @@ struct BatteryWidgetPage {
               .width(42)
               .height(42)
               .color(this.getBatteryColor(this.caseBattery))
-              .backgroundColor('#E8E8E8')
+              .backgroundColor(this.progressBg)
               .style({ strokeWidth: 4 })
 
             Text(this.getBatteryText(this.caseBattery))
               .fontSize(11)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#333333')
+              .fontColor(this.textPrimary)
           }
           .width(42)
           .height(42)
@@ -144,7 +151,7 @@ struct BatteryWidgetPage {
 
           Text('充电仓')
             .fontSize(10)
-            .fontColor('#888888')
+            .fontColor(this.textSecondary)
             .margin({ top: 3 })
         }
         .layoutWeight(1)
@@ -157,7 +164,7 @@ struct BatteryWidgetPage {
       Row() {
         Text(`${this.lastUpdated} 更新 · 点击刷新`)
           .fontSize(10)
-          .fontColor('#AAAAAA')
+          .fontColor(this.textMuted)
       }
       .width('100%')
       .justifyContent(FlexAlign.Center)
@@ -166,7 +173,7 @@ struct BatteryWidgetPage {
     .width('100%')
     .height('100%')
     .padding(12)
-    .backgroundColor('#FFFFFF')
+    .backgroundColor(this.widgetBg)
     .borderRadius(16)
 
       // 透明点击覆盖层：点击卡片任意位置触发刷新

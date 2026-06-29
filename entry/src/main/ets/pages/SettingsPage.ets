@@ -8,6 +8,7 @@ import { image } from '@kit.ImageKit';
 import { formProvider } from '@kit.FormKit';
 import { notificationManager } from '@kit.NotificationKit';
 import router from '@ohos.router';
+import { cardBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted, descTextColor, tipTextColor, btnInactiveBg, accentPrimary, accentGreen } from '../common/AppTheme';
 
 /**
  * 设置页面子组件
@@ -18,6 +19,7 @@ export struct SettingsPage {
   /** 来自主页的 HEX 原始数据（只读） */
   @Prop rawHexLog: string = '';
   @StorageProp('statusBarHeight') statusBarHeight: number = 0;
+  @StorageProp('isDarkMode') isDarkMode: boolean = true;
 
   // 弹窗背景图片
   @State popupBgImage: string = '';
@@ -273,7 +275,7 @@ export struct SettingsPage {
         Text('设置')
           .fontSize(22)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#FFFFFF')
+          .fontColor(textPrimary(this.isDarkMode))
           .margin({ top: 20 })
 
         // ====== 通知管理 ======
@@ -283,7 +285,7 @@ export struct SettingsPage {
               .fontSize(18)
             Text(' 通知管理')
               .fontSize(14)
-              .fontColor('#AAAACC')
+              .fontColor(textSecondary(this.isDarkMode))
               .margin({ left: 6 })
           }
           .width('100%')
@@ -292,7 +294,7 @@ export struct SettingsPage {
           Row() {
             Text('常驻通知显示电量')
               .fontSize(14)
-              .fontColor('#EEEEFF')
+              .fontColor(textPrimary(this.isDarkMode))
               .layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.persistentNotifyEnabled })
               .selectedColor('#2A5CFF')
@@ -307,14 +309,14 @@ export struct SettingsPage {
 
           Text('开启后在状态栏显示电量和ANC状态，并保持后台连接')
             .fontSize(11)
-            .fontColor('#666688')
+            .fontColor(descTextColor(this.isDarkMode))
             .width('85%')
             .margin({ bottom: 12 })
         }
         .width('85%')
         .borderRadius(16)
-        .backgroundColor('#12122E')
-        .border({ width: 1, color: '#2A2A5E' })
+        .backgroundColor(cardBg(this.isDarkMode))
+        .border({ width: 1, color: borderColor(this.isDarkMode) })
         .margin({ top: 24 })
         .alignItems(HorizontalAlign.Center)
 
@@ -325,7 +327,7 @@ export struct SettingsPage {
               .fontSize(18)
             Text(' 弹窗背景')
               .fontSize(14)
-              .fontColor('#AAAACC')
+              .fontColor(textSecondary(this.isDarkMode))
               .margin({ left: 6 })
           }
           .width('100%')
@@ -338,21 +340,21 @@ export struct SettingsPage {
               Text(this.popupBgImage ? '  更换弹窗背景' : '  设置弹窗背景')
                 .fontSize(14)
                 .fontWeight(FontWeight.Medium)
-                .fontColor('#FFFFFF')
+                .fontColor(textPrimary(this.isDarkMode))
             }
           }
           .width('85%')
           .height(44)
-          .backgroundColor('#1E1E3E')
+          .backgroundColor(btnInactiveBg(this.isDarkMode))
           .borderRadius(22)
-          .border({ width: 1, color: '#2A2A5E' })
+          .border({ width: 1, color: borderColor(this.isDarkMode) })
           .onClick(() => {
             this.selectPopupBackground();
           })
 
           Button('预览弹窗')
             .fontSize(14)
-            .fontColor('#FFFFFF')
+            .fontColor(textPrimary(this.isDarkMode))
             .width('85%')
             .height(40)
             .backgroundColor('#2A5CFF')
@@ -365,7 +367,7 @@ export struct SettingsPage {
           if (this.popupBgImage) {
             Button('恢复默认背景')
               .fontSize(13)
-              .fontColor('#8888AA')
+              .fontColor(textTertiary(this.isDarkMode))
               .height(34)
               .backgroundColor('#00000000')
               .margin({ top: 8 })
@@ -377,14 +379,14 @@ export struct SettingsPage {
           if (this.popupBgMessage) {
             Text(this.popupBgMessage)
               .fontSize(12)
-              .fontColor('#4CAF50')
+              .fontColor(accentGreen)
               .margin({ top: 6 })
           }
         }
         .width('85%')
         .borderRadius(16)
-        .backgroundColor('#12122E')
-        .border({ width: 1, color: '#2A2A5E' })
+        .backgroundColor(cardBg(this.isDarkMode))
+        .border({ width: 1, color: borderColor(this.isDarkMode) })
         .margin({ top: 24 })
         .alignItems(HorizontalAlign.Center)
         .padding({ bottom: 16 })
@@ -396,7 +398,7 @@ export struct SettingsPage {
               .fontSize(18)
             Text(' 使用帮助')
               .fontSize(14)
-              .fontColor('#AAAACC')
+              .fontColor(textSecondary(this.isDarkMode))
               .margin({ left: 6 })
           }
           .width('100%')
@@ -404,13 +406,13 @@ export struct SettingsPage {
 
           Text('查看各功能的使用说明和常见问题')
             .fontSize(12)
-            .fontColor('#666688')
+            .fontColor(descTextColor(this.isDarkMode))
             .width('85%')
             .margin({ bottom: 12 })
 
           Button('打开使用帮助')
             .fontSize(14)
-            .fontColor('#FFFFFF')
+            .fontColor(textPrimary(this.isDarkMode))
             .width('85%')
             .height(40)
             .backgroundColor('#2A5CFF')
@@ -421,8 +423,8 @@ export struct SettingsPage {
         }
         .width('85%')
         .borderRadius(16)
-        .backgroundColor('#12122E')
-        .border({ width: 1, color: '#2A2A5E' })
+        .backgroundColor(cardBg(this.isDarkMode))
+        .border({ width: 1, color: borderColor(this.isDarkMode) })
         .margin({ top: 20 })
         .alignItems(HorizontalAlign.Center)
         .padding({ bottom: 16 })
@@ -434,7 +436,7 @@ export struct SettingsPage {
               .fontSize(18)
             Text(' 桌面组件')
               .fontSize(14)
-              .fontColor('#AAAACC')
+              .fontColor(textSecondary(this.isDarkMode))
               .margin({ left: 6 })
           }
           .width('100%')
@@ -442,13 +444,13 @@ export struct SettingsPage {
 
           Text('将电量卡片添加到桌面或负一屏，随时查看耳机电量，数据刷新会有延迟')
             .fontSize(12)
-            .fontColor('#666688')
+            .fontColor(descTextColor(this.isDarkMode))
             .width('85%')
             .margin({ bottom: 12 })
 
           Button('添加桌面卡片')
             .fontSize(14)
-            .fontColor('#FFFFFF')
+            .fontColor(textPrimary(this.isDarkMode))
             .width('85%')
             .height(40)
             .backgroundColor('#2A5CFF')
@@ -459,8 +461,8 @@ export struct SettingsPage {
         }
         .width('85%')
         .borderRadius(16)
-        .backgroundColor('#12122E')
-        .border({ width: 1, color: '#2A2A5E' })
+        .backgroundColor(cardBg(this.isDarkMode))
+        .border({ width: 1, color: borderColor(this.isDarkMode) })
         .margin({ top: 20 })
         .alignItems(HorizontalAlign.Center)
         .padding({ bottom: 16 })
@@ -471,7 +473,7 @@ export struct SettingsPage {
           Row() {
             Text('HEX 原始数据')
               .fontSize(14)
-              .fontColor('#AAAACC')
+              .fontColor(textSecondary(this.isDarkMode))
               .fontWeight(FontWeight.Medium)
 
             Blank()
@@ -502,8 +504,8 @@ export struct SettingsPage {
         }
         .width('85%')
         .borderRadius(16)
-        .backgroundColor('#12122E')
-        .border({ width: 1, color: '#2A2A5E' })
+        .backgroundColor(cardBg(this.isDarkMode))
+        .border({ width: 1, color: borderColor(this.isDarkMode) })
         .margin({ top: 20 })
         .clip(true)
       }

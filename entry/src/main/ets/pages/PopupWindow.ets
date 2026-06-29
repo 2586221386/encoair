@@ -3,6 +3,7 @@ import { common, Want } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { preferences } from '@kit.ArkData';
 import EntryAbility from '../entryability/EntryAbility';
+import { popupGradient1, popupGradient2, popupScrimTop, popupScrimBottom, btnInactiveBg } from '../common/AppTheme';
 
 /**
  * 弹窗界面 - 显示耳机电量
@@ -22,6 +23,7 @@ struct PopupWindow {
   @State popupBgImage: string = '';
   @State isGifBg: boolean = false;
   @State cardHeight: number = 0;
+  @StorageProp('isDarkMode') isDarkMode: boolean = true;
 
   private manager: OppoEarphoneManager = OppoEarphoneManager.getInstance();
   private connectTimeout: number = -1;
@@ -229,7 +231,7 @@ struct PopupWindow {
                   .width(70)
                   .height(70)
                   .color(this.getBatteryColor(this.leftBattery, this.leftCharging))
-                  .backgroundColor('#1E1E3E')
+                  .backgroundColor(btnInactiveBg(this.isDarkMode))
 
                 Text(this.getBatteryText(this.leftBattery))
                   .fontSize(14)
@@ -264,7 +266,7 @@ struct PopupWindow {
                   .width(70)
                   .height(70)
                   .color(this.getBatteryColor(this.rightBattery, this.rightCharging))
-                  .backgroundColor('#1E1E3E')
+                  .backgroundColor(btnInactiveBg(this.isDarkMode))
 
                 Text(this.getBatteryText(this.rightBattery))
                   .fontSize(14)
@@ -299,7 +301,7 @@ struct PopupWindow {
                   .width(70)
                   .height(70)
                   .color(this.getBatteryColor(this.caseBattery, this.caseCharging))
-                  .backgroundColor('#1E1E3E')
+                  .backgroundColor(btnInactiveBg(this.isDarkMode))
 
                 Text(this.getBatteryText(this.caseBattery))
                   .fontSize(14)
@@ -334,7 +336,7 @@ struct PopupWindow {
               .fontColor('#FFFFFF')
               .height(36)
               .layoutWeight(1)
-              .backgroundColor('#1E1E3E')
+              .backgroundColor(btnInactiveBg(this.isDarkMode))
               .borderRadius(18)
               .border({ width: 1, color: '#2A2A5E' })
               .onClick(() => {
@@ -362,15 +364,15 @@ struct PopupWindow {
         .width('85%')
         .borderRadius(20)
         .clip(true)
-        .backgroundColor(this.popupBgImage ? '#00000000' : '#12122E')
+        .backgroundColor(this.popupBgImage ? '#00000000' : popupGradient2(this.isDarkMode))
         .backgroundImage(this.popupBgImage && !this.isGifBg ? this.popupBgImage : '')
         .backgroundImageSize(ImageSize.Cover)
         .backgroundImagePosition(Alignment.Center)
         .linearGradient({
           angle: 180,
           colors: this.popupBgImage
-            ? [['#66000000', 0.0], ['#99000000', 1.0]]
-            : [['#1A1A3E', 0.0], ['#12122E', 1.0]]
+            ? [[popupScrimTop(this.isDarkMode), 0.0], [popupScrimBottom(this.isDarkMode), 1.0]]
+            : [[popupGradient1(this.isDarkMode), 0.0], [popupGradient2(this.isDarkMode), 1.0]]
         })
         .shadow({
           radius: 20,

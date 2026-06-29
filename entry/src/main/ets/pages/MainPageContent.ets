@@ -1,6 +1,7 @@
 import { OppoEarphoneManager, BatteryInfo, ConnectionStatus, WearState, WearStatus, getAncModeName } from '../manager/OppoEarphoneManager';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { pageBg, cardBg, statusBg, btnInactiveBg, btnSubBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted, textHint, accentGreen, accentRed, accentOrange, accentBlue, accentGold, accentPrimary, accentPrimaryGlow, cancelOrange, chargingBadgeBg, lowBattBadgeBg, hexTextColor, progressBg, disconnectedGray, grayBtn, tipTextColor, watermarkText, dotSeparator } from '../common/AppTheme';
 
 /**
  * 电量卡片子组件
@@ -11,23 +12,24 @@ import { BusinessError } from '@kit.BasicServicesKit';
 struct BatteryCardComponent {
   @Prop battery: number = -1;
   @Prop charging: boolean = false;
+  @StorageProp('isDarkMode') isDarkMode: boolean = true;
   private label: string = '';
   private iconType: string = 'L';
 
   getBatteryColor(): string {
     if (this.battery < 0) {
-      return '#666666';
+      return disconnectedGray(this.isDarkMode);
     }
     if (this.charging) {
-      return '#FFD700';
+      return accentGold(this.isDarkMode);
     }
     if (this.battery < 20) {
-      return '#FF4444';
+      return accentRed(this.isDarkMode);
     }
     if (this.battery < 60) {
-      return '#FF9800';
+      return accentOrange(this.isDarkMode);
     }
-    return '#4CAF50';
+    return accentGreen;
   }
 
   getBatteryText(): string {
@@ -46,13 +48,13 @@ struct BatteryCardComponent {
           .width(100)
           .height(100)
           .color(this.getBatteryColor())
-          .backgroundColor('#1E1E3E')
+          .backgroundColor(btnInactiveBg(this.isDarkMode))
 
         // 中间电量百分比
         Text(this.getBatteryText())
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#FFFFFF')
+          .fontColor(textPrimary(this.isDarkMode))
       }
       .width(100)
       .height(100)
@@ -61,7 +63,7 @@ struct BatteryCardComponent {
       // 设备名称
       Text(this.label)
         .fontSize(14)
-        .fontColor('#AAAACC')
+        .fontColor(textSecondary(this.isDarkMode))
         .margin({ top: 10 })
 
       // 充电状态
@@ -71,7 +73,7 @@ struct BatteryCardComponent {
             .fontSize(14)
           Text('充电中')
             .fontSize(13)
-            .fontColor('#FFD700')
+            .fontColor(accentGold(this.isDarkMode))
             .margin({ left: 2 })
         }
         .margin({ top: 6 })
@@ -81,7 +83,7 @@ struct BatteryCardComponent {
       } else if (this.battery >= 0 && this.battery < 20) {
         Text('电量低')
           .fontSize(13)
-          .fontColor('#FF4444')
+          .fontColor(accentRed(this.isDarkMode))
           .margin({ top: 6 })
           .padding({ left: 10, right: 10, top: 3, bottom: 3 })
           .borderRadius(12)
@@ -91,8 +93,8 @@ struct BatteryCardComponent {
     .width('30%')
     .padding({ top: 20, bottom: 16, left: 8, right: 8 })
     .borderRadius(20)
-    .backgroundColor('#12122E')
-    .border({ width: 1, color: '#2A2A5E' })
+    .backgroundColor(cardBg(this.isDarkMode))
+    .border({ width: 1, color: borderColor(this.isDarkMode) })
     .alignItems(HorizontalAlign.Center)
   }
 }
@@ -107,6 +109,7 @@ export struct MainPageContent {
   bottomPadding: number = 0;
   /** HEX原始数据变化回调，通知父组件传给 SettingsPage */
   onRawHexLogChange: (hex: string) => void = () => {};
+  @StorageProp('isDarkMode') isDarkMode: boolean = true;
   @State connectionStatus: ConnectionStatus = 'disconnected';
   @State leftBattery: number = -1;
   @State leftCharging: boolean = false;
@@ -294,17 +297,17 @@ export struct MainPageContent {
   getStatusColor(): string {
     switch (this.connectionStatus) {
       case 'disconnected':
-        return '#9E9E9E';
+        return disconnectedGray(this.isDarkMode);
       case 'scanning':
-        return '#2196F3';
+        return accentBlue(this.isDarkMode);
       case 'connecting':
-        return '#FF9800';
+        return accentOrange(this.isDarkMode);
       case 'connected':
-        return '#2196F3';
+        return accentBlue(this.isDarkMode);
       case 'subscribed':
-        return '#4CAF50';
+        return accentGreen;
       default:
-        return '#9E9E9E';
+        return disconnectedGray(this.isDarkMode);
     }
   }
 
@@ -348,7 +351,7 @@ export struct MainPageContent {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#0D0D1A')
+    .backgroundColor(pageBg(this.isDarkMode))
   }
 
   // ============== 标题区域 ==============
@@ -357,12 +360,12 @@ export struct MainPageContent {
       Text('Air5 Pro')
         .fontSize(26)
         .fontWeight(FontWeight.Bold)
-        .fontColor('#FFFFFF')
+        .fontColor(textPrimary(this.isDarkMode))
         .letterSpacing(1)
 
       Text('耳机助手')
         .fontSize(16)
-        .fontColor('#8888AA')
+        .fontColor(textTertiary(this.isDarkMode))
         .margin({ top: 6 })
     }
     .margin({ top: 12 })
@@ -390,7 +393,7 @@ export struct MainPageContent {
         if (this.macAddress) {
           Text(this.macAddress)
             .fontSize(12)
-            .fontColor('#666688')
+            .fontColor(textMuted(this.isDarkMode))
             .margin({ left: 10 })
             .fontFamily('monospace')
         }
@@ -399,8 +402,8 @@ export struct MainPageContent {
     .width('85%')
     .padding({ left: 20, right: 20, top: 14, bottom: 14 })
     .borderRadius(25)
-    .backgroundColor('#1A1A3E')
-    .border({ width: 1, color: '#2A2A5E' })
+    .backgroundColor(statusBg(this.isDarkMode))
+    .border({ width: 1, color: borderColor(this.isDarkMode) })
     .margin({ top: 25 })
     .alignItems(HorizontalAlign.Center)
   }
@@ -485,7 +488,7 @@ export struct MainPageContent {
       if (!this.hasPermission) {
         Text('请授予蓝牙权限后使用')
           .fontSize(13)
-          .fontColor('#FF6B6B')
+          .fontColor(accentRed(this.isDarkMode))
           .margin({ top: 12 })
       }
     }
@@ -501,14 +504,14 @@ export struct MainPageContent {
       Row() {
         Text('HEX 原始数据')
           .fontSize(14)
-          .fontColor('#AAAACC')
+          .fontColor(textSecondary(this.isDarkMode))
           .fontWeight(FontWeight.Medium)
 
         Blank()
 
         Text(this.showRawData ? '收起 ▲' : '展开 ▼')
           .fontSize(12)
-          .fontColor('#6666AA')
+          .fontColor(textHint(this.isDarkMode))
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 10, bottom: 10 })
@@ -520,7 +523,7 @@ export struct MainPageContent {
         Scroll() {
           Text(this.rawHexLog || '等待数据...')
             .fontSize(11)
-            .fontColor('#88AACC')
+            .fontColor(hexTextColor(this.isDarkMode))
             .fontFamily('monospace')
             .width('100%')
             .copyOption(CopyOptions.LocalDevice)
@@ -532,8 +535,8 @@ export struct MainPageContent {
     }
     .width('85%')
     .borderRadius(16)
-    .backgroundColor('#12122E')
-    .border({ width: 1, color: '#2A2A5E' })
+    .backgroundColor(cardBg(this.isDarkMode))
+    .border({ width: 1, color: borderColor(this.isDarkMode) })
     .margin({ top: 20 })
     .clip(true)
   }
@@ -547,7 +550,7 @@ export struct MainPageContent {
           .fontSize(18)
         Text(' ANC 模式')
           .fontSize(14)
-          .fontColor('#AAAACC')
+          .fontColor(textSecondary(this.isDarkMode))
           .margin({ left: 6 })
       }
       .width('100%')
@@ -564,7 +567,7 @@ export struct MainPageContent {
               .fontColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#FFFFFF' : '#AAAACC')
               .width('90%')
               .height(45)
-              .backgroundColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#2A5CFF' : '#1E1E3E')
+              .backgroundColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
               .borderRadius(12)
               .border({
                 width: 1,
@@ -586,7 +589,7 @@ export struct MainPageContent {
               .fontColor(this.ancMode === 1 ? '#FFFFFF' : '#AAAACC')
               .width('90%')
               .height(45)
-              .backgroundColor(this.ancMode === 1 ? '#2A5CFF' : '#1E1E3E')
+              .backgroundColor(this.ancMode === 1 ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
               .borderRadius(12)
               .border({
                 width: 1,
@@ -608,7 +611,7 @@ export struct MainPageContent {
               .fontColor(this.ancMode === 3 ? '#FFFFFF' : '#AAAACC')
               .width('90%')
               .height(45)
-              .backgroundColor(this.ancMode === 3 ? '#2A5CFF' : '#1E1E3E')
+              .backgroundColor(this.ancMode === 3 ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
               .borderRadius(12)
               .border({
                 width: 1,
@@ -636,7 +639,7 @@ export struct MainPageContent {
                 .fontColor(this.ancMode === 5 ? '#FFFFFF' : '#8888AA')
                 .width('90%')
                 .height(36)
-                .backgroundColor(this.ancMode === 5 ? '#2A5CFF' : '#1A1A3E')
+                .backgroundColor(this.ancMode === 5 ? '#2A5CFF' : btnSubBg(this.isDarkMode))
                 .borderRadius(10)
                 .border({
                   width: 1,
@@ -658,7 +661,7 @@ export struct MainPageContent {
                 .fontColor(this.ancMode === 6 ? '#FFFFFF' : '#8888AA')
                 .width('90%')
                 .height(36)
-                .backgroundColor(this.ancMode === 6 ? '#2A5CFF' : '#1A1A3E')
+                .backgroundColor(this.ancMode === 6 ? '#2A5CFF' : btnSubBg(this.isDarkMode))
                 .borderRadius(10)
                 .border({
                   width: 1,
@@ -680,7 +683,7 @@ export struct MainPageContent {
                 .fontColor(this.ancMode === 7 ? '#FFFFFF' : '#8888AA')
                 .width('90%')
                 .height(36)
-                .backgroundColor(this.ancMode === 7 ? '#2A5CFF' : '#1A1A3E')
+                .backgroundColor(this.ancMode === 7 ? '#2A5CFF' : btnSubBg(this.isDarkMode))
                 .borderRadius(10)
                 .border({
                   width: 1,
@@ -702,7 +705,7 @@ export struct MainPageContent {
                 .fontColor(this.ancMode === 8 ? '#FFFFFF' : '#8888AA')
                 .width('90%')
                 .height(36)
-                .backgroundColor(this.ancMode === 8 ? '#2A5CFF' : '#1A1A3E')
+                .backgroundColor(this.ancMode === 8 ? '#2A5CFF' : btnSubBg(this.isDarkMode))
                 .borderRadius(10)
                 .border({
                   width: 1,
@@ -722,7 +725,7 @@ export struct MainPageContent {
       } else {
         Text('--')
           .fontSize(14)
-          .fontColor('#666688')
+          .fontColor(textMuted(this.isDarkMode))
           .width('100%')
           .textAlign(TextAlign.Center)
           .padding({ top: 20, bottom: 20 })
@@ -734,7 +737,7 @@ export struct MainPageContent {
           .fontSize(18)
         Text(' 佩戴状态')
           .fontSize(14)
-          .fontColor('#AAAACC')
+          .fontColor(textSecondary(this.isDarkMode))
           .margin({ left: 6 })
 
         Blank()
@@ -756,7 +759,7 @@ export struct MainPageContent {
         } else {
           Text('--')
             .fontSize(14)
-            .fontColor('#666688')
+            .fontColor(textMuted(this.isDarkMode))
         }
       }
       .width('100%')
@@ -768,7 +771,7 @@ export struct MainPageContent {
           .fontSize(18)
         Text(' 游戏模式')
           .fontSize(14)
-          .fontColor('#AAAACC')
+          .fontColor(textSecondary(this.isDarkMode))
           .margin({ left: 6 })
 
         Blank()
@@ -786,7 +789,7 @@ export struct MainPageContent {
         } else {
           Text('--')
             .fontSize(14)
-            .fontColor('#666688')
+            .fontColor(textMuted(this.isDarkMode))
         }
       }
       .width('100%')
@@ -798,7 +801,7 @@ export struct MainPageContent {
           .fontSize(18)
         Text(' 空间音频')
           .fontSize(14)
-          .fontColor('#AAAACC')
+          .fontColor(textSecondary(this.isDarkMode))
           .margin({ left: 6 })
 
         Blank()
@@ -816,7 +819,7 @@ export struct MainPageContent {
         } else {
           Text('--')
             .fontSize(14)
-            .fontColor('#666688')
+            .fontColor(textMuted(this.isDarkMode))
         }
       }
       .width('100%')
@@ -824,8 +827,8 @@ export struct MainPageContent {
     }
     .width('85%')
     .borderRadius(16)
-    .backgroundColor('#12122E')
-    .border({ width: 1, color: '#2A2A5E' })
+    .backgroundColor(cardBg(this.isDarkMode))
+    .border({ width: 1, color: borderColor(this.isDarkMode) })
     .margin({ top: 20 })
 
     // 双设备连接
@@ -835,7 +838,7 @@ export struct MainPageContent {
           .fontSize(18)
         Text(' 双设备连接')
           .fontSize(14)
-          .fontColor('#AAAACC')
+          .fontColor(textSecondary(this.isDarkMode))
           .margin({ left: 6 })
 
         Blank()
@@ -850,7 +853,7 @@ export struct MainPageContent {
         } else {
           Text('--')
             .fontSize(14)
-            .fontColor('#666688')
+            .fontColor(textMuted(this.isDarkMode))
         }
       }
       .width('100%')
@@ -858,8 +861,8 @@ export struct MainPageContent {
     }
     .width('85%')
     .borderRadius(16)
-    .backgroundColor('#12122E')
-    .border({ width: 1, color: '#2A2A5E' })
+    .backgroundColor(cardBg(this.isDarkMode))
+    .border({ width: 1, color: borderColor(this.isDarkMode) })
     .margin({ top: 12 })
 
     // EQ 大师调音预设
@@ -869,7 +872,7 @@ export struct MainPageContent {
           .fontSize(18)
         Text(' 大师调音')
           .fontSize(14)
-          .fontColor('#AAAACC')
+          .fontColor(textSecondary(this.isDarkMode))
           .margin({ left: 6 })
 
         Blank()
@@ -877,11 +880,11 @@ export struct MainPageContent {
         if (this.connectionStatus === 'subscribed' && this.currentEqPreset >= 0) {
           Text(OppoEarphoneManager.EQ_PRESETS[this.currentEqPreset] ?? '')
             .fontSize(12)
-            .fontColor('#4CAF50')
+            .fontColor(accentGreen)
         } else if (this.connectionStatus !== 'subscribed') {
           Text('--')
             .fontSize(14)
-            .fontColor('#666688')
+            .fontColor(textMuted(this.isDarkMode))
         }
       }
       .width('100%')
@@ -897,7 +900,7 @@ export struct MainPageContent {
                 .fontColor(this.currentEqPreset === presetId ? '#FFFFFF' : '#AAAACC')
                 .width('100%')
                 .height(34)
-                .backgroundColor(this.currentEqPreset === presetId ? '#2A5CFF' : '#1E1E3E')
+                .backgroundColor(this.currentEqPreset === presetId ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
                 .borderRadius(12)
                 .border({
                   width: 1,
@@ -917,7 +920,7 @@ export struct MainPageContent {
       } else {
         Text('连接耳机后可使用大师调音')
           .fontSize(11)
-          .fontColor('#555577')
+          .fontColor(tipTextColor(this.isDarkMode))
           .width('100%')
           .textAlign(TextAlign.Center)
           .padding({ bottom: 12 })
@@ -925,8 +928,8 @@ export struct MainPageContent {
     }
     .width('85%')
     .borderRadius(16)
-    .backgroundColor('#12122E')
-    .border({ width: 1, color: '#2A2A5E' })
+    .backgroundColor(cardBg(this.isDarkMode))
+    .border({ width: 1, color: borderColor(this.isDarkMode) })
     .margin({ top: 12 })
   }
 
@@ -940,7 +943,7 @@ export struct MainPageContent {
         .fontColor(isSelected ? '#FFFFFF' : '#AAAACC')
         .width('90%')
         .height(45)
-        .backgroundColor(isSelected ? '#2A5CFF' : '#1E1E3E')
+        .backgroundColor(isSelected ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
         .borderRadius(12)
         .border({
           width: 1,
@@ -962,7 +965,7 @@ export struct MainPageContent {
         .fontColor(isSelected ? '#FFFFFF' : '#8888AA')
         .width('90%')
         .height(36)
-        .backgroundColor(isSelected ? '#2A5CFF' : '#1A1A3E')
+        .backgroundColor(isSelected ? '#2A5CFF' : btnSubBg(this.isDarkMode))
         .borderRadius(10)
         .border({
           width: 1,
@@ -1007,7 +1010,7 @@ export struct MainPageContent {
       if (this.connectionStatus === 'disconnected' || this.connectionStatus === 'scanning') {
         Text('已开启自动监听,检测到耳机会自动连接')
           .fontSize(12)
-          .fontColor('#6666AA')
+          .fontColor(textHint(this.isDarkMode))
           .textAlign(TextAlign.Center)
           .padding({ left: 30, right: 30 })
       }
@@ -1016,7 +1019,7 @@ export struct MainPageContent {
 
       Text('Air5 Pro 耳机助手')
         .fontSize(11)
-        .fontColor('#444466')
+        .fontColor(watermarkText(this.isDarkMode))
         .margin({ bottom: 30 })
     }
     .width('100%')

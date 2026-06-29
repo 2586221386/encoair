@@ -1,5 +1,5 @@
 import { FormExtensionAbility, formBindingData, formProvider } from '@kit.FormKit';
-import { Want } from '@kit.AbilityKit';
+import { Want, ConfigurationConstant } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { fileIo } from '@kit.CoreFileKit';
@@ -19,6 +19,7 @@ class BatteryWidgetData {
   caseCharging: boolean = false;
   lastUpdated: string = '--:--';
   connected: boolean = false;
+  isDarkMode: boolean = false;
 }
 
 /**
@@ -26,6 +27,17 @@ class BatteryWidgetData {
  * 负责卡片生命周期管理和数据推送
  */
 export default class BatteryFormAbility extends FormExtensionAbility {
+
+  /**
+   * 读取系统颜色模式
+   */
+  private getIsDarkMode(): boolean {
+    try {
+      return this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    } catch (e) {
+      return false;
+    }
+  }
 
   /**
    * 卡片首次添加到桌面时调用
@@ -70,6 +82,7 @@ export default class BatteryFormAbility extends FormExtensionAbility {
    * 从 Preferences 同步读取电量数据
    */
   private readBatteryData(): BatteryWidgetData {
+    let isDark: boolean = this.getIsDarkMode();
     try {
       let pref = preferences.getPreferencesSync(this.context, { name: PREF_NAME });
       let leftBattery: number = pref.getSync('leftBattery', -1) as number;
@@ -91,6 +104,7 @@ export default class BatteryFormAbility extends FormExtensionAbility {
           String(connected), String(isStale));
         let fallback = new BatteryWidgetData();
         fallback.lastUpdated = lastUpdated;
+        fallback.isDarkMode = isDark;
         return fallback;
       }
 
@@ -107,10 +121,12 @@ export default class BatteryFormAbility extends FormExtensionAbility {
       data.caseCharging = caseCharging;
       data.lastUpdated = lastUpdated;
       data.connected = connected;
+      data.isDarkMode = isDark;
       return data;
     } catch (err) {
       hilog.error(0x0000, 'BatteryForm', '读取电量数据失败: %{public}s', JSON.stringify(err));
       let fallback = new BatteryWidgetData();
+      fallback.isDarkMode = isDark;
       return fallback;
     }
   }

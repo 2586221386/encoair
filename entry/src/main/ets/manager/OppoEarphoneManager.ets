@@ -19,6 +19,7 @@ class WidgetBatteryData {
   caseCharging: boolean = false;
   lastUpdated: string = '--:--';
   connected: boolean = false;
+  isDarkMode: boolean = false;
 }
 
 /**
@@ -95,6 +96,9 @@ export class OppoEarphoneManager {
 
   // 应用前后台状态（后台任务跳过前台运行时的刷新）
   static isAppForeground: boolean = false;
+
+  // 应用深色模式标志（主应用 EntryAbility 设置，供卡片推送时注入）
+  static isAppDarkMode: boolean = true;
 
   // 后台保活状态
   private isBackgroundTaskRunning: boolean = false;
@@ -1193,9 +1197,10 @@ export class OppoEarphoneManager {
           widgetData.caseCharging = writeCaseCharging;
           widgetData.lastUpdated = timeStr;
           widgetData.connected = this.isConnected;
+          widgetData.isDarkMode = OppoEarphoneManager.isAppDarkMode;
           let data = formBindingData.createFormBindingData(widgetData);
           await formProvider.updateForm(formId, data);
-          console.info(`[OppoManager] 卡片已刷新: formId=${formId}`);
+          console.info(`[OppoManager] 2×2卡片已刷新: formId=${formId}`);
         } catch (updateErr) {
           console.warn(`[OppoManager] 刷新卡片失败: formId=${formId}, err=${(updateErr as BusinessError).message}`);
         }

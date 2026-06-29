@@ -1,5 +1,5 @@
 import { FormExtensionAbility, formBindingData, formProvider } from '@kit.FormKit';
-import { Want } from '@kit.AbilityKit';
+import { Want, ConfigurationConstant } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { fileIo } from '@kit.CoreFileKit';
@@ -16,6 +16,7 @@ class WidgetData1x2 {
   batteryLevel: number = -1;
   isConnected: boolean = false;
   lastUpdated: string = '--:--';
+  isDarkMode: boolean = false;
 }
 
 /**
@@ -23,6 +24,14 @@ class WidgetData1x2 {
  * 通过系统 HFP 蓝牙 API 获取通用电量，无需唤醒主应用
  */
 export default class BatteryFormAbility1x2 extends FormExtensionAbility {
+
+  private getIsDarkMode(): boolean {
+    try {
+      return this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    } catch (e) {
+      return false;
+    }
+  }
 
   /**
    * 卡片首次添加到桌面
@@ -60,6 +69,7 @@ export default class BatteryFormAbility1x2 extends FormExtensionAbility {
    * 通过系统蓝牙 API 获取电量并刷新卡片
    */
   private async fetchAndUpdate(formId: string): Promise<void> {
+    let isDark: boolean = this.getIsDarkMode();
     try {
       let pref = preferences.getPreferencesSync(this.context, { name: PREF_NAME });
       let mac: string = pref.getSync('savedMac', '') as string;
@@ -83,6 +93,7 @@ export default class BatteryFormAbility1x2 extends FormExtensionAbility {
       data.batteryLevel = batteryLevel;
       data.isConnected = connected;
       data.lastUpdated = timeStr;
+      data.isDarkMode = isDark;
 
       // 缓存到 Preferences 供其他进程读取
       pref.putSync('batteryLevel_1x2', batteryLevel);
@@ -105,15 +116,19 @@ export default class BatteryFormAbility1x2 extends FormExtensionAbility {
    * 读取缓存的电量数据（同步返回，避免返回全 -1）
    */
   private readCachedData(): WidgetData1x2 {
+    let isDark: boolean = this.getIsDarkMode();
     try {
       let pref = preferences.getPreferencesSync(this.context, { name: PREF_NAME });
       let data = new WidgetData1x2();
       data.batteryLevel = pref.getSync('batteryLevel_1x2', -1) as number;
       data.isConnected = pref.getSync('isConnected_1x2', false) as boolean;
       data.lastUpdated = pref.getSync('lastUpdated_1x2', '--:--') as string;
+      data.isDarkMode = isDark;
       return data;
     } catch (err) {
-      return new WidgetData1x2();
+      let fallback = new WidgetData1x2();
+      fallback.isDarkMode = isDark;
+      return fallback;
     }
   }
 

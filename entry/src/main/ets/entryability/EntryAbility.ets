@@ -1,4 +1,4 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, ConfigurationConstant, UIAbility, Want, Configuration } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
@@ -17,6 +17,10 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      // 设置初始主题状态（AppStorage 是 ArkTS 全局对象，无需 import）
+      let isDark: boolean = this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+      AppStorage.setOrCreate<boolean>('isDarkMode', isDark);
+      OppoEarphoneManager.isAppDarkMode = isDark;
     } catch (err) {
       hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
@@ -80,6 +84,13 @@ export default class EntryAbility extends UIAbility {
   onWindowStageDestroy(): void {
     // Main window is destroyed, release UI related resources
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
+  }
+
+  onConfigurationUpdate(newConfig: Configuration): void {
+    let isDark: boolean = newConfig.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    AppStorage.setOrCreate<boolean>('isDarkMode', isDark);
+    OppoEarphoneManager.isAppDarkMode = isDark;
+    hilog.info(DOMAIN, 'testTag', '颜色模式变化: isDarkMode=%{public}s', String(isDark));
   }
 
   onForeground(): void {

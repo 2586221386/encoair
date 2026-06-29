@@ -1,6 +1,7 @@
 import { HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit';
 import { MainPageContent } from './MainPageContent';
 import { SettingsPage } from './SettingsPage';
+import { pageBg, tabBarInactive, accentPrimary } from '../common/AppTheme';
 
 /**
  * 主页面（API 23+ 版）
@@ -12,6 +13,7 @@ import { SettingsPage } from './SettingsPage';
 struct Index {
   @State rawHexLog: string = '';
   @State currentIndex: number = 0;
+  @StorageProp('isDarkMode') isDarkMode: boolean = true;
   private tabsController: HdsTabsController = new HdsTabsController();
 
   build() {
@@ -46,7 +48,7 @@ struct Index {
     .width('100%')
     .height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .backgroundColor('#0D0D1A')
+    .backgroundColor(pageBg(this.isDarkMode))
     .onChange((index: number) => {
       this.currentIndex = index;
     })
@@ -55,7 +57,7 @@ struct Index {
   @Builder TabBarItem(icon: string, title: string, index: number) {
     Column() {
       Text(icon).fontSize(22)
-      Text(title).fontSize(11).fontColor(this.currentIndex === index ? '#FFFFFF' : '#666688').margin({ top: 2 })
+      Text(title).fontSize(11).fontColor(this.currentIndex === index ? accentPrimary : tabBarInactive(this.isDarkMode)).margin({ top: 2 })
     }
     .width('100%').height('100%')
     .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
