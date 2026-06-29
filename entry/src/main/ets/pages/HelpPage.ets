@@ -1,4 +1,5 @@
 import router from '@ohos.router';
+import { cardBg, borderColor, textPrimary, textSecondary, textHint, pageBg } from '../common/AppTheme';
 
 /**
  * 帮助条目数据模型
@@ -22,6 +23,7 @@ class HelpItem {
 @Component
 struct HelpPage {
   @StorageProp('statusBarHeight') statusBarHeight: number = 0;
+  @StorageProp('isDarkMode') isDarkMode: boolean = true;
   @State helpItems: HelpItem[] = [];
 
   aboutToAppear(): void {
@@ -140,7 +142,7 @@ struct HelpPage {
       Row() {
         Text('←')
           .fontSize(22)
-          .fontColor('#FFFFFF')
+          .fontColor(textPrimary(this.isDarkMode))
           .width(44)
           .height(44)
           .textAlign(TextAlign.Center)
@@ -150,7 +152,7 @@ struct HelpPage {
         Text('使用帮助')
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#FFFFFF')
+          .fontColor(textPrimary(this.isDarkMode))
           .margin({ left: 8 })
         Blank()
       }
@@ -168,11 +170,11 @@ struct HelpPage {
                 Text(item.title)
                   .fontSize(15)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor('#EEEEFF')
+                  .fontColor(textPrimary(this.isDarkMode))
                   .layoutWeight(1)
                 Text(item.isExpanded ? '收起 ▲' : '展开 ▼')
                   .fontSize(12)
-                  .fontColor('#6666AA')
+                  .fontColor(textHint(this.isDarkMode))
               }
               .width('100%')
               .padding({ left: 16, right: 16, top: 14, bottom: 14 })
@@ -184,7 +186,7 @@ struct HelpPage {
               if (item.isExpanded) {
                 Text(item.content)
                   .fontSize(13)
-                  .fontColor('#9999BB')
+                  .fontColor(textSecondary(this.isDarkMode))
                   .lineHeight(22)
                   .width('100%')
                   .padding({ left: 16, right: 16, bottom: 14 })
@@ -192,8 +194,8 @@ struct HelpPage {
             }
             .width('85%')
             .borderRadius(12)
-            .backgroundColor('#12122E')
-            .border({ width: 1, color: '#2A2A5E' })
+            .backgroundColor(cardBg(this.isDarkMode))
+            .border({ width: 1, color: borderColor(this.isDarkMode) })
             .margin({ top: index === 0 ? 16 : 12 })
             .clip(true)
           }, (item: HelpItem, index: number) => `${index}_${item.isExpanded}`)
@@ -208,7 +210,7 @@ struct HelpPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#0D0D1A')
+    .backgroundColor(pageBg(this.isDarkMode))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .padding({ top: this.statusBarHeight })
   }
