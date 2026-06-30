@@ -1,4 +1,4 @@
-import { OppoEarphoneManager, BatteryInfo, ConnectionStatus, WearState, WearStatus, getAncModeName } from '../manager/OppoEarphoneManager';
+import { OppoEarphoneManager, BatteryInfo, ConnectionStatus, WearState, WearStatus, getAncModeName, SPATIAL_AUDIO_OFF, SPATIAL_AUDIO_FIXED, SPATIAL_AUDIO_HEAD_TRACKING } from '../manager/OppoEarphoneManager';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { pageBg, cardBg, statusBg, btnInactiveBg, btnSubBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted, textHint, accentGreen, accentRed, accentOrange, accentBlue, accentGold, accentPrimary, accentPrimaryGlow, cancelOrange, chargingBadgeBg, lowBattBadgeBg, hexTextColor, progressBg, disconnectedGray, grayBtn, tipTextColor, watermarkText, dotSeparator } from '../common/AppTheme';
@@ -131,8 +131,12 @@ export struct MainPageContent {
   @State caseWear: WearState = WearState.DISCONNECTED;
   // 游戏模式
   @State gameModeEnabled: boolean = false;
-  // 空间音频
-  @State spatialAudioEnabled: boolean = false;
+  // 空间音频模式（0=关闭, 1=固定/开启, 2=头部追踪）
+  @State spatialAudioMode: number = SPATIAL_AUDIO_OFF;
+  // 设备能力缓存（连接后从 Manager 同步，驱动 UI 条件渲染）
+  @State capsSpatialAudio: boolean = false;
+  @State capsSpatialSoundSwitch: boolean = false;
+  @State capsAdaptiveAnc: boolean = false;
   // 双设备连接
   @State dualDeviceEnabled: boolean = false;
   // EQ预设
@@ -177,8 +181,18 @@ export struct MainPageContent {
         if (status === 'connected' || status === 'subscribed') {
           this.macAddress = this.manager.getMacAddress();
         }
+        if (status === 'subscribed') {
+          // 同步设备能力到 @State，驱动空间音频 UI 条件渲染
+          let caps = this.manager.getDeviceCapabilities();
+          this.capsSpatialAudio = caps.spatialAudioSupported;
+          this.capsSpatialSoundSwitch = caps.spatialSoundSwitchSupported;
+          this.capsAdaptiveAnc = caps.adaptiveSupported;
+        }
         if (status === 'disconnected') {
           this.macAddress = '';
+          this.capsSpatialAudio = false;
+          this.capsSpatialSoundSwitch = false;
+          this.capsAdaptiveAnc = false;
         }
       });
     this.manager.setRawDataCallback((hex: string) => {
@@ -207,9 +221,9 @@ export struct MainPageContent {
         this.gameModeEnabled = enabled;
         console.info(`[Index] 游戏模式: ${enabled ? '开启' : '关闭'}`);
       });
-    this.manager.setSpatialAudioCallback((enabled: boolean) => {
-        this.spatialAudioEnabled = enabled;
-        console.info(`[Index] 空间音频: ${enabled ? '开启' : '关闭'}`);
+    this.manager.setSpatialAudioCallback((mode: number) => {
+        this.spatialAudioMode = mode;
+        console.info(`[Index] 空间音频模式: ${mode}`);
       });
     this.manager.setDualDeviceCallback((enabled: boolean) => {
         this.dualDeviceEnabled = enabled;
@@ -562,7 +576,7 @@ export struct MainPageContent {
           // 降噪按钮
           Column() {
             Button('降噪')
-              .fontSize(15)
+              .fontSize(13)
               .fontWeight(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? FontWeight.Bold : FontWeight.Medium)
               .fontColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#FFFFFF' : '#AAAACC')
               .width('90%')
@@ -581,10 +595,34 @@ export struct MainPageContent {
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Center)
 
+          // 自适应降噪按钮（仅支持设备如 Free4 时显示）
+          if (this.capsAdaptiveAnc) {
+            Column() {
+              Button('自适应')
+                .fontSize(8)
+                .fontWeight(this.ancMode === 4 ? FontWeight.Bold : FontWeight.Medium)
+                .fontColor(this.ancMode === 4 ? '#FFFFFF' : '#AAAACC')
+                .width('90%')
+                .height(45)
+                .backgroundColor(this.ancMode === 4 ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
+                .borderRadius(12)
+                .border({
+                  width: 1,
+                  color: this.ancMode === 4 ? '#4A7CFF' : '#2A2A5E'
+                })
+                .shadow({ radius: 10, color: this.ancMode === 4 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 4 ? 8 : 0, offsetY: this.ancMode === 4 ? 8 : 0 })
+                .onClick(() => {
+                  this.manager.setAncMode(4);
+                })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Center)
+          }
+
           // 关闭按钮
           Column() {
             Button('关闭')
-              .fontSize(15)
+              .fontSize(13)
               .fontWeight(this.ancMode === 1 ? FontWeight.Bold : FontWeight.Medium)
               .fontColor(this.ancMode === 1 ? '#FFFFFF' : '#AAAACC')
               .width('90%')
@@ -606,7 +644,7 @@ export struct MainPageContent {
           // 通透按钮
           Column() {
             Button('通透')
-              .fontSize(15)
+              .fontSize(13)
               .fontWeight(this.ancMode === 3 ? FontWeight.Bold : FontWeight.Medium)
               .fontColor(this.ancMode === 3 ? '#FFFFFF' : '#AAAACC')
               .width('90%')
@@ -634,7 +672,7 @@ export struct MainPageContent {
             // 智能降噪按钮
             Column() {
               Button('智能')
-                .fontSize(13)
+                .fontSize(12)
                 .fontWeight(this.ancMode === 5 ? FontWeight.Bold : FontWeight.Medium)
                 .fontColor(this.ancMode === 5 ? '#FFFFFF' : '#8888AA')
                 .width('90%')
@@ -656,7 +694,7 @@ export struct MainPageContent {
             // 轻度降噪按钮
             Column() {
               Button('轻度')
-                .fontSize(13)
+                .fontSize(12)
                 .fontWeight(this.ancMode === 6 ? FontWeight.Bold : FontWeight.Medium)
                 .fontColor(this.ancMode === 6 ? '#FFFFFF' : '#8888AA')
                 .width('90%')
@@ -678,7 +716,7 @@ export struct MainPageContent {
             // 中度降噪按钮
             Column() {
               Button('中度')
-                .fontSize(13)
+                .fontSize(12)
                 .fontWeight(this.ancMode === 7 ? FontWeight.Bold : FontWeight.Medium)
                 .fontColor(this.ancMode === 7 ? '#FFFFFF' : '#8888AA')
                 .width('90%')
@@ -700,7 +738,7 @@ export struct MainPageContent {
             // 深度降噪按钮
             Column() {
               Button('深度')
-                .fontSize(13)
+                .fontSize(12)
                 .fontWeight(this.ancMode === 8 ? FontWeight.Bold : FontWeight.Medium)
                 .fontColor(this.ancMode === 8 ? '#FFFFFF' : '#8888AA')
                 .width('90%')
@@ -795,35 +833,55 @@ export struct MainPageContent {
       .width('100%')
       .padding({ left: 16, right: 16, top: 8, bottom: 12 })
 
-      // 空间音频
-      Row() {
-        Text('🎧')
-          .fontSize(18)
-        Text(' 空间音频')
-          .fontSize(14)
-          .fontColor(textSecondary(this.isDarkMode))
-          .margin({ left: 6 })
-
-        Blank()
-
-        if (this.connectionStatus === 'subscribed') {
-          Button(this.spatialAudioEnabled ? '已开启' : '已关闭')
-            .fontSize(13)
-            .height(32)
-            .backgroundColor(this.spatialAudioEnabled ? '#4CAF50' : '#666666')
-            .borderRadius(16)
-            .onClick(() => {
-              // 切换空间音频
-              this.manager.setSpatialAudio(!this.spatialAudioEnabled);
-            })
-        } else {
-          Text('--')
-            .fontSize(14)
-            .fontColor(textMuted(this.isDarkMode))
-        }
+      // 空间音频（按能力动态渲染）
+      if (this.capsSpatialAudio) {
+        // 支持头部追踪 (X3) → 三段式: 关闭 | 固定 | 头跟
+        Row() {
+          Text('🎧').fontSize(18)
+          Text(' 空间音频').fontSize(14).fontColor(textSecondary(this.isDarkMode)).margin({ left: 6 })
+          Blank()
+          if (this.connectionStatus === 'subscribed') {
+            Button('关闭').fontSize(12).height(28)
+              .fontWeight(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? FontWeight.Bold : FontWeight.Normal)
+              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? '#2A5CFF' : btnSubBg(this.isDarkMode))
+              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode === SPATIAL_AUDIO_OFF ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_OFF); })
+            Button('固定').fontSize(12).height(28)
+              .fontWeight(this.spatialAudioMode === SPATIAL_AUDIO_FIXED ? FontWeight.Bold : FontWeight.Normal)
+              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_FIXED ? '#2A5CFF' : btnSubBg(this.isDarkMode))
+              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode === SPATIAL_AUDIO_FIXED ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_FIXED); })
+            Button('头跟').fontSize(12).height(28)
+              .fontWeight(this.spatialAudioMode === SPATIAL_AUDIO_HEAD_TRACKING ? FontWeight.Bold : FontWeight.Normal)
+              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_HEAD_TRACKING ? '#2A5CFF' : btnSubBg(this.isDarkMode))
+              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode === SPATIAL_AUDIO_HEAD_TRACKING ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_HEAD_TRACKING); })
+          } else {
+            Text('--').fontSize(14).fontColor(textMuted(this.isDarkMode))
+          }
+        }.width('100%').padding({ left: 16, right: 16, top: 8, bottom: 12 })
+      } else if (this.capsSpatialSoundSwitch) {
+        // 支持空间音效开关 (Air5/Free4) → 两端式: 关闭 | 开启
+        Row() {
+          Text('🎧').fontSize(18)
+          Text(' 空间音频').fontSize(14).fontColor(textSecondary(this.isDarkMode)).margin({ left: 6 })
+          Blank()
+          if (this.connectionStatus === 'subscribed') {
+            Button('关闭').fontSize(12).height(28)
+              .fontWeight(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? FontWeight.Bold : FontWeight.Normal)
+              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? '#2A5CFF' : btnSubBg(this.isDarkMode))
+              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode === SPATIAL_AUDIO_OFF ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_OFF); })
+            Button('开启').fontSize(12).height(28)
+              .fontWeight(this.spatialAudioMode >= SPATIAL_AUDIO_FIXED ? FontWeight.Bold : FontWeight.Normal)
+              .backgroundColor(this.spatialAudioMode >= SPATIAL_AUDIO_FIXED ? '#2A5CFF' : btnSubBg(this.isDarkMode))
+              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode >= SPATIAL_AUDIO_FIXED ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_FIXED); })
+          } else {
+            Text('--').fontSize(14).fontColor(textMuted(this.isDarkMode))
+          }
+        }.width('100%').padding({ left: 16, right: 16, top: 8, bottom: 12 })
       }
-      .width('100%')
-      .padding({ left: 16, right: 16, top: 8, bottom: 12 })
     }
     .width('85%')
     .borderRadius(16)
@@ -960,7 +1018,7 @@ export struct MainPageContent {
   @Builder AncSubButton(label: string, isSelected: boolean, onClick: () => void) {
     Column() {
       Button(label)
-        .fontSize(13)
+        .fontSize(12)
         .fontWeight(isSelected ? FontWeight.Bold : FontWeight.Medium)
         .fontColor(isSelected ? '#FFFFFF' : '#8888AA')
         .width('90%')

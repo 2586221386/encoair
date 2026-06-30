@@ -6,6 +6,12 @@ import { common, wantAgent, WantAgent, Want } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { notificationManager } from '@kit.NotificationKit';
+import { detectDeviceCapabilities, DeviceCapabilities, CapabilityOverrides, CAP_OVERRIDE_AUTO } from '../common/DeviceCapabilities';
+
+/** 空间音频模式常量 */
+export const SPATIAL_AUDIO_OFF = 0;
+export const SPATIAL_AUDIO_FIXED = 1;
+export const SPATIAL_AUDIO_HEAD_TRACKING = 2;
 
 /**
  * 桌面卡片电量数据结构
@@ -135,7 +141,7 @@ export class OppoEarphoneManager {
   private ancCallback: ((mode: number) => void) | null = null;
   private wearCallback: ((wear: WearStatus) => void) | null = null;
   private gameModeCallback: ((enabled: boolean) => void) | null = null;
-  private spatialAudioCallback: ((enabled: boolean) => void) | null = null;
+  private spatialAudioCallback: ((mode: number) => void) | null = null;
   private dualDeviceCallback: ((enabled: boolean) => void) | null = null;
   private eqPresetCallback: ((preset: number) => void) | null = null;
 
@@ -171,14 +177,22 @@ export class OppoEarphoneManager {
   // 游戏模式状态
   private gameModeEnabled: boolean = false;
 
-  // 空间音频状态（0=关闭, 1=固定/开启）
-  private spatialAudioEnabled: boolean = false;
+  // 空间音频模式（0=关闭, 1=固定/开启, 2=头部追踪）
+  private spatialAudioMode: number = SPATIAL_AUDIO_OFF;
 
   // 双设备连接状态
   private dualDeviceEnabled: boolean = false;
 
   // EQ预设状态 (-1=未知)
   private currentEqPreset: number = -1;
+
+  // === 设备能力检测 ===
+  /** 已连接设备的蓝牙名称（用于能力白名单匹配） */
+  private cachedDeviceName: string = '';
+  /** 当前设备的能力配置 */
+  private deviceCapabilities: DeviceCapabilities = new DeviceCapabilities();
+  /** 用户能力覆写（从 Preferences 加载） */
+  private capabilityOverrides: CapabilityOverrides = new CapabilityOverrides();
 
   // 定时查询定时器
   private queryTimer: number = -1;
@@ -241,9 +255,73 @@ export class OppoEarphoneManager {
   setAncCallback(cb: (mode: number) => void): void { this.ancCallback = cb; }
   setWearCallback(cb: (wear: WearStatus) => void): void { this.wearCallback = cb; }
   setGameModeCallback(cb: (enabled: boolean) => void): void { this.gameModeCallback = cb; }
-  setSpatialAudioCallback(cb: (enabled: boolean) => void): void { this.spatialAudioCallback = cb; }
+  setSpatialAudioCallback(cb: (mode: number) => void): void { this.spatialAudioCallback = cb; }
   setDualDeviceCallback(cb: (enabled: boolean) => void): void { this.dualDeviceCallback = cb; }
   setEqPresetCallback(cb: (preset: number) => void): void { this.eqPresetCallback = cb; }
+
+  /**
+   * 获取当前设备能力配置（供外部查询）
+   */
+  getDeviceCapabilities(): DeviceCapabilities {
+    return this.deviceCapabilities;
+  }
+
+  /**
+   * 根据设备名称检测能力并应用
+   * 在 SPP 连接成功后调用
+   */
+  private detectAndApplyCapabilities(deviceName: string): void {
+    this.cachedDeviceName = deviceName;
+    this.loadCapabilityOverrides();
+    this.deviceCapabilities = detectDeviceCapabilities(deviceName, this.capabilityOverrides);
+    console.info(`[OppoManager] 设备能力检测完成: name="${deviceName}"` +
+      `, spatialSoundSwitch=${this.deviceCapabilities.spatialSoundSwitchSupported}` +
+      `, legacyAnc=${this.deviceCapabilities.legacyAnc}`);
+  }
+
+  /**
+   * 从 Preferences 加载用户能力覆写
+   */
+  private loadCapabilityOverrides(): void {
+    try {
+      if (!OppoEarphoneManager.appContext) return;
+      let pref = preferences.getPreferencesSync(OppoEarphoneManager.appContext, { name: 'capability_overrides' });
+      this.capabilityOverrides.spatialAudio = pref.getSync('spatialAudio', CAP_OVERRIDE_AUTO) as number;
+      this.capabilityOverrides.spatialSoundSwitch = pref.getSync('spatialSoundSwitch', CAP_OVERRIDE_AUTO) as number;
+      this.capabilityOverrides.ancLegacy = pref.getSync('ancLegacy', CAP_OVERRIDE_AUTO) as number;
+      this.capabilityOverrides.adaptiveAnc = pref.getSync('adaptiveAnc', CAP_OVERRIDE_AUTO) as number;
+    } catch (e) {
+      console.warn('[OppoManager] 加载能力覆写失败，使用默认');
+    }
+  }
+
+  /**
+   * 保存用户能力覆写并重新检测
+   */
+  applyCapabilityOverrides(overrides: CapabilityOverrides): void {
+    this.capabilityOverrides = overrides;
+    // 持久化
+    try {
+      if (!OppoEarphoneManager.appContext) return;
+      let pref = preferences.getPreferencesSync(OppoEarphoneManager.appContext, { name: 'capability_overrides' });
+      pref.putSync('spatialAudio', overrides.spatialAudio);
+      pref.putSync('spatialSoundSwitch', overrides.spatialSoundSwitch);
+      pref.putSync('ancLegacy', overrides.ancLegacy);
+      pref.putSync('adaptiveAnc', overrides.adaptiveAnc);
+      pref.flush();
+    } catch (e) {
+      console.warn('[OppoManager] 保存能力覆写失败');
+    }
+    // 重新检测
+    if (this.cachedDeviceName) {
+      this.deviceCapabilities = detectDeviceCapabilities(this.cachedDeviceName, overrides);
+      console.info('[OppoManager] 能力覆写已应用，重新检测完成');
+      // 已连接时重新通知 subscribed 状态，触发 UI（MainPageContent）重读能力标志
+      if (this.isConnected) {
+        this.notifyStatus('subscribed');
+      }
+    }
+  }
 
   /**
    * 检查系统蓝牙音频配置是否已连接
@@ -549,9 +627,15 @@ export class OppoEarphoneManager {
 
   /**
    * 设置 ANC 模式
+   * 支持旧版 ANC 指令反转型号（Air2 Pro 等: 0x01=降噪, 0x02=关闭）
    */
   setAncMode(mode: number): void {
     let payload: number[] = [];
+    // 旧版兼容模式：关闭和降噪的 payload 互换
+    if (this.deviceCapabilities.legacyAnc) {
+      if (mode === 1) { mode = 2; }
+      else if (mode === 2) { mode = 1; }
+    }
     switch (mode) {
       case 1: payload = [0x01, 0x01, 0x01]; break;
       case 2: payload = [0x01, 0x01, 0x02]; break;
@@ -565,7 +649,8 @@ export class OppoEarphoneManager {
     }
     const packet = this.buildPacket(0x0404, 0x00, payload);
     this.sendPacket(packet);
-    console.info(`[OppoManager] 发送 ANC 模式切换指令: ${getAncModeName(mode)}`);
+    console.info(`[OppoManager] 发送 ANC 模式切换指令: ${getAncModeName(mode)}` +
+      (this.deviceCapabilities.legacyAnc ? ' (兼容模式)' : ''));
     setTimeout(() => {
       this.queryAncMode();
     }, 350);
@@ -603,19 +688,39 @@ export class OppoEarphoneManager {
   }
 
   /**
-   * 设置空间音频开关
-   * 使用 cmd=0x0403 + feature=0x1B（空间音效特征码）
+   * 设置空间音频模式
+   * 根据设备能力自动选择协议:
+   * - spatialSoundSwitchSupported (Air5) → 0x1B switch，仅 ON/OFF，mode>=1 视为开启
+   * - spatialAudioSupported (X3) → 0x0422，支持 OFF/FIXED/HEAD_TRACKING 三态
    */
-  setSpatialAudio(enabled: boolean): void {
-    this.spatialAudioEnabled = enabled;
-    this.notifySpatialAudioUpdate(enabled);
-    const payload: number[] = [0x1B, enabled ? 0x01 : 0x00];
-    const packet = this.buildPacket(0x0403, 0x00, payload);
-    this.sendPacket(packet);
-    console.info(`[OppoManager] 发送空间音频切换指令: ${enabled ? '开启' : '关闭'}`);
+  setSpatialAudio(mode: number): void {
+    const normalized = Math.max(SPATIAL_AUDIO_OFF, Math.min(SPATIAL_AUDIO_HEAD_TRACKING, mode));
+    this.spatialAudioMode = normalized;
+    this.notifySpatialAudioUpdate(normalized);
+    if (this.deviceCapabilities.spatialSoundSwitchSupported) {
+      // Air5 / Free4: 0x1B switch，仅判断开/关
+      const enabled = normalized >= SPATIAL_AUDIO_FIXED;
+      const payload: number[] = [0x1B, enabled ? 0x01 : 0x00];
+      const packet = this.buildPacket(0x0403, 0x00, payload);
+      this.sendPacket(packet);
+      console.info(`[OppoManager] 发送空间音频(0x1B): ${enabled ? '开启' : '关闭'}`);
+    } else if (this.deviceCapabilities.spatialAudioSupported) {
+      // X3: 0x0422 标准空间音频，发送 mode 值
+      const payload: number[] = [normalized];
+      const packet = this.buildPacket(0x0422, 0x00, payload);
+      this.sendPacket(packet);
+      console.info(`[OppoManager] 发送空间音频(0x0422): mode=${normalized}`);
+    }
     setTimeout(() => {
       this.querySpatialAudio();
     }, 350);
+  }
+
+  /**
+   * 获取当前空间音频模式
+   */
+  getSpatialAudioMode(): number {
+    return this.spatialAudioMode;
   }
 
   /**
@@ -743,8 +848,8 @@ export class OppoEarphoneManager {
     if (this.gameModeCallback) this.gameModeCallback(enabled);
   }
 
-  private notifySpatialAudioUpdate(enabled: boolean): void {
-    if (this.spatialAudioCallback) this.spatialAudioCallback(enabled);
+  private notifySpatialAudioUpdate(mode: number): void {
+    if (this.spatialAudioCallback) this.spatialAudioCallback(mode);
   }
 
   private notifyDualDeviceUpdate(enabled: boolean): void {
@@ -844,6 +949,9 @@ export class OppoEarphoneManager {
     this.cancelReconnect();
     // 停止后台保活 + 移除通知
     this.stopBackgroundService();
+    // 重置设备能力检测状态
+    this.cachedDeviceName = '';
+    this.deviceCapabilities = new DeviceCapabilities();
     this.cleanup(silent);
     this.notifyStatus('disconnected');
   }
@@ -893,6 +1001,14 @@ export class OppoEarphoneManager {
         this.isConnected = true;
         this.saveConnectedMac(macAddress);
         this.reconnectAttempts = 0;
+
+        // 检测设备能力（基于蓝牙设备名）
+        try {
+          let name: string = connection.getRemoteDeviceName(macAddress);
+          this.detectAndApplyCapabilities(name);
+        } catch (nameErr) {
+          console.warn(`[OppoManager] 获取设备名失败，使用默认能力: ${(nameErr as BusinessError).message}`);
+        }
 
         // 注册数据接收监听
         try {
@@ -1291,9 +1407,15 @@ export class OppoEarphoneManager {
         else if (val1 === 0x00 && val2 === 0x08) mode = 4;
         else if (val1 === 0x01 && val2 === 0x00) mode = 1;
         if (this.currentAncMode !== mode) {
+          // 旧版 ANC 兼容：接收方向也需互换（0x01报降噪, 0x02报关）
+          if (this.deviceCapabilities.legacyAnc) {
+            if (mode === 1) mode = 2;
+            else if (mode === 2) mode = 1;
+          }
           this.currentAncMode = mode;
           this.notifyAncUpdate(mode);
-          console.info(`[OppoManager] ANC模式变更: ${getAncModeName(mode)}`);
+          console.info(`[OppoManager] ANC模式变更: ${getAncModeName(mode)}` +
+            (this.deviceCapabilities.legacyAnc ? ' (兼容模式)' : ''));
         }
         return;
       }
@@ -1409,10 +1531,11 @@ export class OppoEarphoneManager {
       }
       if (data[i] === 0x1B) {
         const enabled = data[i + 1] === 0x01;
+        const mode = enabled ? SPATIAL_AUDIO_FIXED : SPATIAL_AUDIO_OFF;
         console.info(`[OppoManager] parseFeatureFlags 找到 0x1B 特征值，空间音频=${enabled ? '开启' : '关闭'}`);
-        if (this.spatialAudioEnabled !== enabled) {
-          this.spatialAudioEnabled = enabled;
-          this.notifySpatialAudioUpdate(enabled);
+        if (this.spatialAudioMode !== mode) {
+          this.spatialAudioMode = mode;
+          this.notifySpatialAudioUpdate(mode);
           console.info(`[OppoManager] 空间音频: ${enabled ? '开启' : '关闭'}`);
         }
       }
@@ -1442,21 +1565,21 @@ export class OppoEarphoneManager {
     // 0x0510 = 空间音频模式主动通知，payload[0] = mode（0=关, 1=固定, 2=头部追踪）
     if (cmd === 0x0510) {
       const mode = data[payloadStart];
-      const enabled = mode !== 0x00;
-      console.info(`[OppoManager] 空间音频通知(0x0510): mode=${mode}, 开启=${enabled}`);
-      if (this.spatialAudioEnabled !== enabled) {
-        this.spatialAudioEnabled = enabled;
-        this.notifySpatialAudioUpdate(enabled);
+      const normalized = Math.max(SPATIAL_AUDIO_OFF, Math.min(SPATIAL_AUDIO_HEAD_TRACKING, mode));
+      console.info(`[OppoManager] 空间音频通知(0x0510): mode=${normalized}`);
+      if (this.spatialAudioMode !== normalized) {
+        this.spatialAudioMode = normalized;
+        this.notifySpatialAudioUpdate(normalized);
       }
     }
     // 0x8422 = 空间音频设置响应（专用指令），payload[0] = mode
     if (cmd === 0x8422) {
       const mode = data[payloadStart];
-      const enabled = mode !== 0x00;
-      console.info(`[OppoManager] 空间音频设置响应(0x8422): mode=${mode}, 开启=${enabled}`);
-      if (this.spatialAudioEnabled !== enabled) {
-        this.spatialAudioEnabled = enabled;
-        this.notifySpatialAudioUpdate(enabled);
+      const normalized = Math.max(SPATIAL_AUDIO_OFF, Math.min(SPATIAL_AUDIO_HEAD_TRACKING, mode));
+      console.info(`[OppoManager] 空间音频设置响应(0x8422): mode=${normalized}`);
+      if (this.spatialAudioMode !== normalized) {
+        this.spatialAudioMode = normalized;
+        this.notifySpatialAudioUpdate(normalized);
       }
     }
     // 0x8403 = 特征开关响应，扫描 0x1B 空间音效特征
@@ -1464,10 +1587,11 @@ export class OppoEarphoneManager {
       for (let i = payloadStart; i < payloadStart + payLen - 1; i++) {
         if (data[i] === 0x1B) {
           const enabled = data[i + 1] === 0x01;
+          const mode = enabled ? SPATIAL_AUDIO_FIXED : SPATIAL_AUDIO_OFF;
           console.info(`[OppoManager] 空间音频开关响应(0x8403,0x1B): ${enabled ? '开启' : '关闭'}`);
-          if (this.spatialAudioEnabled !== enabled) {
-            this.spatialAudioEnabled = enabled;
-            this.notifySpatialAudioUpdate(enabled);
+          if (this.spatialAudioMode !== mode) {
+            this.spatialAudioMode = mode;
+            this.notifySpatialAudioUpdate(mode);
           }
         }
       }

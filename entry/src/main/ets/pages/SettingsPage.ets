@@ -9,6 +9,7 @@ import { formProvider } from '@kit.FormKit';
 import { notificationManager } from '@kit.NotificationKit';
 import router from '@ohos.router';
 import { cardBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted, descTextColor, tipTextColor, btnInactiveBg, accentPrimary, accentGreen } from '../common/AppTheme';
+import { CapabilityOverrides, CAP_OVERRIDE_AUTO, CAP_OVERRIDE_FORCE_ENABLED, CAP_OVERRIDE_FORCE_DISABLED } from '../common/DeviceCapabilities';
 
 /**
  * 设置页面子组件
@@ -28,6 +29,12 @@ export struct SettingsPage {
   @State persistentNotifyEnabled: boolean = false;
   // HEX 数据展开/收起（设置页独立控制）
   @State showRawHex: boolean = false;
+  // 设备能力覆写
+  @State spatialSoundOverride: number = CAP_OVERRIDE_AUTO;
+  @State legacyAncOverride: number = CAP_OVERRIDE_AUTO;
+
+  // 操作提示消息
+  @State capabilityMessage: string = '';
 
   private manager: OppoEarphoneManager = OppoEarphoneManager.getInstance();
 
@@ -36,6 +43,8 @@ export struct SettingsPage {
     this.loadPopupBackground();
     // 加载通知设置
     this.loadNotificationSettings();
+    // 加载能力覆写设置
+    this.loadOverrideSettings();
   }
 
   /**
@@ -508,6 +517,74 @@ export struct SettingsPage {
         .border({ width: 1, color: borderColor(this.isDarkMode) })
         .margin({ top: 20 })
         .clip(true)
+
+        // ====== 高级设置：设备能力覆写 ======
+        Column() {
+          Row() {
+            Text('🔧')
+              .fontSize(18)
+            Text(' 高级设置')
+              .fontSize(14)
+              .fontColor(textSecondary(this.isDarkMode))
+              .margin({ left: 6 })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 4 })
+
+          Text('设备能力覆写（支持非标准/未知型号时手动调整）')
+            .fontSize(11)
+            .fontColor(tipTextColor(this.isDarkMode))
+            .width('85%')
+            .margin({ bottom: 8 })
+
+          // 空间音效协议覆写
+          Row() {
+            Text('空间音效协议')
+              .fontSize(13)
+              .fontColor(textSecondary(this.isDarkMode))
+              .layoutWeight(1)
+            Text(this.getOverrideLabel(this.spatialSoundOverride))
+              .fontSize(12)
+              .fontColor(textTertiary(this.isDarkMode))
+              .onClick(() => {
+                this.spatialSoundOverride = this.cycleOverride(this.spatialSoundOverride);
+                this.applyOverrides();
+              })
+          }
+          .width('85%')
+          .height(36)
+
+          // 旧版 ANC 指令覆写
+          Row() {
+            Text('旧版 ANC 兼容')
+              .fontSize(13)
+              .fontColor(textSecondary(this.isDarkMode))
+              .layoutWeight(1)
+            Text(this.getOverrideLabel(this.legacyAncOverride))
+              .fontSize(12)
+              .fontColor(textTertiary(this.isDarkMode))
+              .onClick(() => {
+                this.legacyAncOverride = this.cycleOverride(this.legacyAncOverride);
+                this.applyOverrides();
+              })
+          }
+          .width('85%')
+          .height(36)
+          .margin({ bottom: 12 })
+
+          if (this.capabilityMessage) {
+            Text(this.capabilityMessage)
+              .fontSize(11)
+              .fontColor(accentGreen)
+              .width('85%')
+              .margin({ bottom: 8 })
+          }
+        }
+        .width('85%')
+        .borderRadius(16)
+        .backgroundColor(cardBg(this.isDarkMode))
+        .border({ width: 1, color: borderColor(this.isDarkMode) })
+        .margin({ top: 20 })
       }
       .width('100%')
       .padding({ top: this.statusBarHeight, bottom: 100 })
@@ -516,5 +593,51 @@ export struct SettingsPage {
     .layoutWeight(1)
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)
+  }
+
+  /** 三态覆写循环 */
+  private cycleOverride(current: number): number {
+    if (current === CAP_OVERRIDE_AUTO) return CAP_OVERRIDE_FORCE_ENABLED;
+    if (current === CAP_OVERRIDE_FORCE_ENABLED) return CAP_OVERRIDE_FORCE_DISABLED;
+    return CAP_OVERRIDE_AUTO;
+  }
+
+  /** 三态覆写标签 */
+  private getOverrideLabel(value: number): string {
+    if (value === CAP_OVERRIDE_AUTO) return '自动';
+    if (value === CAP_OVERRIDE_FORCE_ENABLED) return '强制开启';
+    return '强制关闭';
+  }
+
+  /** 加载能力覆写持久化值 */
+  private loadOverrideSettings(): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let pref = preferences.getPreferencesSync(context, { name: 'capability_overrides' });
+      this.spatialSoundOverride = pref.getSync('spatialSoundSwitch', CAP_OVERRIDE_AUTO) as number;
+      this.legacyAncOverride = pref.getSync('ancLegacy', CAP_OVERRIDE_AUTO) as number;
+    } catch (e) {
+      console.warn('[Settings] 加载能力覆写失败');
+    }
+  }
+
+  /** 应用覆写到 Manager，已连接时自动重连生效 */
+  private applyOverrides(): void {
+    let overrides = new CapabilityOverrides();
+    overrides.spatialSoundSwitch = this.spatialSoundOverride;
+    overrides.ancLegacy = this.legacyAncOverride;
+    this.manager.applyCapabilityOverrides(overrides);
+    // 已连接时自动断开重连，使新能力立即生效
+    if (this.manager.getIsConnected()) {
+      this.capabilityMessage = '能力覆写已保存，正在重连应用...';
+      this.manager.disconnect();
+      setTimeout(() => {
+        this.capabilityMessage = '';
+        this.manager.startAutoConnect();
+      }, 800);
+    } else {
+      this.capabilityMessage = '能力覆写已保存';
+      setTimeout(() => { this.capabilityMessage = ''; }, 2500);
+    }
   }
 }
