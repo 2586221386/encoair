@@ -1385,7 +1385,7 @@ export class OppoEarphoneManager {
     if (data.length < payloadStart + payLen) return;
     if (cmd === 0x0204 && payLen > 0) {
       const reportType = data[payloadStart];
-      if (reportType === 0x01 || reportType === 0x02 || reportType === 0x03) return;
+      if (reportType === 0x01 || reportType === 0x02) return;
     }
     const payloadEnd = Math.min(payloadStart + payLen, data.length);
     for (let i = payloadStart; i < payloadEnd - 2; i++) {
