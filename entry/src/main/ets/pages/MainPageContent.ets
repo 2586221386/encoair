@@ -190,9 +190,6 @@ export struct MainPageContent {
         }
         if (status === 'disconnected') {
           this.macAddress = '';
-          this.capsSpatialAudio = false;
-          this.capsSpatialSoundSwitch = false;
-          this.capsAdaptiveAnc = false;
         }
       });
     this.manager.setRawDataCallback((hex: string) => {
