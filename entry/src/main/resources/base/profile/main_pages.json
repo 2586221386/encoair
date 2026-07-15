@@ -4,6 +4,8 @@
     "pages/IndexOld",
     "pages/PopupWindow",
     "pages/HelpPage",
-    "pages/MultiDeviceManagementPage"
+    "pages/MultiDeviceManagementPage",
+    "pages/EqMasterPage",
+    "pages/EqEditorPage"
   ]
 }

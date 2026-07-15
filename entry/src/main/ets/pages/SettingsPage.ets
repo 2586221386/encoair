@@ -30,8 +30,10 @@ export struct SettingsPage {
   // HEX 数据展开/收起（设置页独立控制）
   @State showRawHex: boolean = false;
   // 设备能力覆写
+  @State spatialAudioOverride: number = CAP_OVERRIDE_AUTO;
   @State spatialSoundOverride: number = CAP_OVERRIDE_AUTO;
   @State legacyAncOverride: number = CAP_OVERRIDE_AUTO;
+  @State adaptiveAncOverride: number = CAP_OVERRIDE_AUTO;
 
   // 操作提示消息
   @State capabilityMessage: string = '';
@@ -554,6 +556,23 @@ export struct SettingsPage {
           .width('85%')
           .height(36)
 
+          // 空间音频协议覆写
+          Row() {
+            Text('空间音频(三模式)')
+              .fontSize(13)
+              .fontColor(textSecondary(this.isDarkMode))
+              .layoutWeight(1)
+            Text(this.getOverrideLabel(this.spatialAudioOverride))
+              .fontSize(12)
+              .fontColor(textTertiary(this.isDarkMode))
+              .onClick(() => {
+                this.spatialAudioOverride = this.cycleOverride(this.spatialAudioOverride);
+                this.applyOverrides();
+              })
+          }
+          .width('85%')
+          .height(36)
+
           // 旧版 ANC 指令覆写
           Row() {
             Text('旧版 ANC 兼容')
@@ -565,6 +584,23 @@ export struct SettingsPage {
               .fontColor(textTertiary(this.isDarkMode))
               .onClick(() => {
                 this.legacyAncOverride = this.cycleOverride(this.legacyAncOverride);
+                this.applyOverrides();
+              })
+          }
+          .width('85%')
+          .height(36)
+
+          // 自适应降噪覆写
+          Row() {
+            Text('自适应降噪')
+              .fontSize(13)
+              .fontColor(textSecondary(this.isDarkMode))
+              .layoutWeight(1)
+            Text(this.getOverrideLabel(this.adaptiveAncOverride))
+              .fontSize(12)
+              .fontColor(textTertiary(this.isDarkMode))
+              .onClick(() => {
+                this.adaptiveAncOverride = this.cycleOverride(this.adaptiveAncOverride);
                 this.applyOverrides();
               })
           }
@@ -614,8 +650,10 @@ export struct SettingsPage {
     try {
       let context = getContext(this) as common.UIAbilityContext;
       let pref = preferences.getPreferencesSync(context, { name: 'capability_overrides' });
+      this.spatialAudioOverride = pref.getSync('spatialAudio', CAP_OVERRIDE_AUTO) as number;
       this.spatialSoundOverride = pref.getSync('spatialSoundSwitch', CAP_OVERRIDE_AUTO) as number;
       this.legacyAncOverride = pref.getSync('ancLegacy', CAP_OVERRIDE_AUTO) as number;
+      this.adaptiveAncOverride = pref.getSync('adaptiveAnc', CAP_OVERRIDE_AUTO) as number;
     } catch (e) {
       console.warn('[Settings] 加载能力覆写失败');
     }
@@ -624,8 +662,11 @@ export struct SettingsPage {
   /** 应用覆写到 Manager，已连接时自动重连生效 */
   private applyOverrides(): void {
     let overrides = new CapabilityOverrides();
+    // 合并当前 Manager 中已有覆写值（确保未在 UI 中显示的字段不被覆盖）
+    overrides.spatialAudio = this.spatialAudioOverride;
     overrides.spatialSoundSwitch = this.spatialSoundOverride;
     overrides.ancLegacy = this.legacyAncOverride;
+    overrides.adaptiveAnc = this.adaptiveAncOverride;
     this.manager.applyCapabilityOverrides(overrides);
     // 已连接时自动断开重连，使新能力立即生效
     if (this.manager.getIsConnected()) {

@@ -138,10 +138,23 @@ export struct MainPageContent {
   @State capsSpatialAudio: boolean = false;
   @State capsSpatialSoundSwitch: boolean = false;
   @State capsAdaptiveAnc: boolean = false;
+  @State capsGameSound: boolean = false;
+  @State gameSoundEnabled: boolean = false;
+  // 智能 ANC 实时档位
+  @State intelligentAncLevel: string = '';
+  // 设备能力缓存 — EQ 预设列表
+  @State eqPresetNames: Record<number, string> = {};
+  @State eqPresetIds: number[] = [];
+  // 固件版本和编解码器
+  @State firmwareVersion: string = '';
+  @State codecName: string = '--';
+  @State deviceModelName: string = '';
   // 双设备连接（通过 AppStorage 与多设备管理页双向联动）
   @StorageLink('dualDeviceEnabled') dualDeviceEnabled: boolean = false;
+  // 佩戴检测
+  @StorageLink('wearDetectionEnabled') wearDetectionEnabled: boolean = false;
   // EQ预设
-  @State currentEqPreset: number = -1;
+  @StorageProp('currentEqPreset') currentEqPreset: number = -1;
   @StorageProp('statusBarHeight') statusBarHeight: number = 0;
   // TabBar
   @State currentIndex: number = 0;
@@ -188,6 +201,12 @@ export struct MainPageContent {
           this.capsSpatialAudio = caps.spatialAudioSupported;
           this.capsSpatialSoundSwitch = caps.spatialSoundSwitchSupported;
           this.capsAdaptiveAnc = caps.adaptiveSupported;
+          this.capsGameSound = caps.gameSoundSupported;
+          // 同步 EQ 预设列表
+          this.eqPresetNames = this.manager.getEqPresetNames();
+          this.eqPresetIds = this.manager.getEqPresetIds();
+          // 同步设备型号
+          this.deviceModelName = caps.modelName !== 'Unknown' && caps.modelName !== '' ? caps.modelName : this.manager.getMacAddress();
         }
         if (status === 'disconnected') {
           this.macAddress = '';
@@ -219,6 +238,10 @@ export struct MainPageContent {
         this.gameModeEnabled = enabled;
         console.info(`[Index] 游戏模式: ${enabled ? '开启' : '关闭'}`);
       });
+    this.manager.setGameSoundCallback((enabled: boolean) => {
+        this.gameSoundEnabled = enabled;
+        console.info(`[Index] 游戏音效: ${enabled ? '开启' : '关闭'}`);
+      });
     this.manager.setSpatialAudioCallback((mode: number) => {
         this.spatialAudioMode = mode;
         console.info(`[Index] 空间音频模式: ${mode}`);
@@ -231,7 +254,17 @@ export struct MainPageContent {
       });
     this.manager.setEqPresetCallback((preset: number) => {
         this.currentEqPreset = preset;
-        console.info(`[Index] EQ预设: ${OppoEarphoneManager.EQ_PRESETS[preset] ?? '未知'}`);
+        console.info(`[Index] EQ预设: ${this.eqPresetNames[preset] ?? '未知'}`);
+      });
+    this.manager.setFirmwareCallback((version: string) => {
+        this.firmwareVersion = version;
+      });
+    this.manager.setCodecCallback((codec: number) => {
+        this.codecName = this.manager.getCodecName();
+      });
+    this.manager.setIntelligentAncCallback((level: string) => {
+        this.intelligentAncLevel = level;
+        console.info(`[Index] 智能 ANC 档位: ${level}`);
       });
     
     // 立即请求权限并开始监听
@@ -760,6 +793,15 @@ export struct MainPageContent {
           .width('100%')
           .padding({ left: 16, right: 16, top: 8, bottom: 4 })
         }
+        // 智能降噪实时档位显示
+        if (this.ancMode === 5 && this.intelligentAncLevel) {
+          Row() {
+            Text('📊').fontSize(14)
+            Text(' 当前档位: ' + this.intelligentAncLevel)
+              .fontSize(12).fontColor(accentGreen).margin({ left: 4 })
+          }
+          .width('100%').padding({ left: 16, right: 16, bottom: 8 })
+        }
       } else {
         Text('--')
           .fontSize(14)
@@ -832,6 +874,27 @@ export struct MainPageContent {
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 8, bottom: 12 })
+
+      // 游戏音效（仅支持设备）
+      if (this.capsGameSound) {
+        Row() {
+          Text('🎵').fontSize(18)
+          Text(' 游戏音效').fontSize(14).fontColor(textSecondary(this.isDarkMode)).margin({ left: 6 })
+          Blank()
+          if (this.connectionStatus === 'subscribed') {
+            Button(this.gameSoundEnabled ? '已开启' : '已关闭')
+              .fontSize(13).height(32)
+              .backgroundColor(this.gameSoundEnabled ? '#4CAF50' : '#666666')
+              .borderRadius(16)
+              .onClick(() => {
+                this.manager.setGameSoundEnabled(!this.gameSoundEnabled);
+              })
+          } else {
+            Text('--').fontSize(14).fontColor(textMuted(this.isDarkMode))
+          }
+        }
+        .width('100%').padding({ left: 16, right: 16, top: 8, bottom: 12 })
+      }
 
       // 空间音频（按能力动态渲染）
       if (this.capsSpatialAudio) {
@@ -930,7 +993,44 @@ export struct MainPageContent {
     .border({ width: 1, color: borderColor(this.isDarkMode) })
     .margin({ top: 12 })
 
-    // EQ 大师调音预设
+    // 佩戴检测（智能播放暂停）
+    if (this.connectionStatus === 'subscribed' && this.manager.getDeviceCapabilities().hasWearDetection) {
+      Column() {
+        Row() {
+          Text('👂')
+            .fontSize(18)
+          Text(' 佩戴检测')
+            .fontSize(14)
+            .fontColor(textSecondary(this.isDarkMode))
+            .margin({ left: 6 })
+
+          Blank()
+
+          Toggle({ type: ToggleType.Switch, isOn: this.wearDetectionEnabled })
+            .selectedColor('#2A5CFF')
+            .switchPointColor('#FFFFFF')
+            .onChange((isOn: boolean) => {
+              this.wearDetectionEnabled = isOn;
+              this.manager.setWearDetection(isOn);
+            })
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 8, bottom: 4 })
+
+        Text('摘下耳机时自动暂停播放，重新佩戴时继续播放')
+          .fontSize(10)
+          .fontColor(tipTextColor(this.isDarkMode))
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 12 })
+      }
+      .width('85%')
+      .borderRadius(16)
+      .backgroundColor(cardBg(this.isDarkMode))
+      .border({ width: 1, color: borderColor(this.isDarkMode) })
+      .margin({ top: 12 })
+    }
+
+    // EQ 大师调音预设（点击进入完整 EQ 管理页面）
     Column() {
       Row() {
         Text('🎵')
@@ -943,59 +1043,61 @@ export struct MainPageContent {
         Blank()
 
         if (this.connectionStatus === 'subscribed' && this.currentEqPreset >= 0) {
-          Text(OppoEarphoneManager.EQ_PRESETS[this.currentEqPreset] ?? '')
+          Text(this.eqPresetNames[this.currentEqPreset] ?? '')
             .fontSize(12)
             .fontColor(accentGreen)
+        } else if (this.connectionStatus === 'subscribed' && this.eqPresetIds.length > 0) {
+          Text('点击选择')
+            .fontSize(12)
+            .fontColor(accentPrimary)
         } else if (this.connectionStatus !== 'subscribed') {
           Text('--')
             .fontSize(14)
             .fontColor(textMuted(this.isDarkMode))
         }
+
+        Text('›')
+          .fontSize(18)
+          .fontColor(textTertiary(this.isDarkMode))
+          .margin({ left: 4 })
       }
       .width('100%')
-      .padding({ left: 16, right: 16, top: 10, bottom: 4 })
-
-      if (this.connectionStatus === 'subscribed') {
-        Grid() {
-          ForEach(OppoEarphoneManager.EQ_PRESET_IDS, (presetId: number) => {
-            GridItem() {
-              Button(OppoEarphoneManager.EQ_PRESETS[presetId] ?? '')
-                .fontSize(12)
-                .fontWeight(this.currentEqPreset === presetId ? FontWeight.Bold : FontWeight.Normal)
-                .fontColor(this.currentEqPreset === presetId ? '#FFFFFF' : '#AAAACC')
-                .width('100%')
-                .height(34)
-                .backgroundColor(this.currentEqPreset === presetId ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
-                .borderRadius(12)
-                .border({
-                  width: 1,
-                  color: this.currentEqPreset === presetId ? '#4A7CFF' : '#2A2A5E'
-                })
-                .onClick(() => {
-                  this.manager.setEqPreset(presetId);
-                })
-            }
-          }, (presetId: number) => presetId.toString())
-        }
-        .columnsTemplate('1fr 1fr 1fr')
-        .columnsGap(6)
-        .rowsGap(6)
-        .width('100%')
-        .padding({ left: 12, right: 12, bottom: 12 })
-      } else {
-        Text('连接耳机后可使用大师调音')
-          .fontSize(11)
-          .fontColor(tipTextColor(this.isDarkMode))
-          .width('100%')
-          .textAlign(TextAlign.Center)
-          .padding({ bottom: 12 })
-      }
+      .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+      .onClick(() => {
+        router.pushUrl({ url: 'pages/EqMasterPage' });
+      })
     }
     .width('85%')
     .borderRadius(16)
     .backgroundColor(cardBg(this.isDarkMode))
     .border({ width: 1, color: borderColor(this.isDarkMode) })
     .margin({ top: 12 })
+
+    // 设备信息（固件版本 + 编解码器）
+    Column() {
+      if (this.connectionStatus === 'subscribed') {
+        Row() {
+          Text('📋').fontSize(18)
+          Text(' 设备信息').fontSize(14).fontColor(textSecondary(this.isDarkMode)).margin({ left: 6 })
+        }
+        .width('100%').padding({ left: 16, right: 16, top: 12, bottom: 0 })
+        if (this.deviceModelName) {
+          Text('  ' + this.deviceModelName)
+            .fontSize(13).fontColor(textPrimary(this.isDarkMode)).fontWeight(FontWeight.Medium)
+            .width('100%').padding({ left: 16, right: 16, top: 6, bottom: 0 })
+        }
+        if (this.firmwareVersion) {
+          Text('  固件版本: ' + this.firmwareVersion)
+            .fontSize(12).fontColor(textTertiary(this.isDarkMode))
+            .width('100%').padding({ left: 16, right: 16, top: 6, bottom: 0 })
+        }
+        Text('  编解码器: ' + this.codecName)
+          .fontSize(12).fontColor(textTertiary(this.isDarkMode))
+          .width('100%').padding({ left: 16, right: 16, top: this.firmwareVersion ? 4 : 6, bottom: 12 })
+      }
+    }
+    .width('85%').borderRadius(16).backgroundColor(cardBg(this.isDarkMode))
+    .border({ width: 1, color: borderColor(this.isDarkMode) }).margin({ top: 12 })
   }
 
   // ANC 单个按钮组件

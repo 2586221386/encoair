@@ -11,33 +11,15 @@
  */
 
 import { ConnectedDeviceInfo, MultiPriorityInfo, MultiDeviceOpType, MultiDeviceOpResult } from '../common/ConnectedDeviceInfo';
-
-// ============== 多设备协议常量 ==============
-
-/** 查询多设备连接列表 (0x0112) */
-const CMD_MULTI_CONNECT_INFO: number = 0x0112;
-/** 多设备列表响应 (0x8112) */
-const CMD_MULTI_CONNECT_RESP: number = 0x8112;
-/** 操作多设备手持设备 (0x0429) */
-const CMD_OPERATE_HANDHELD: number = 0x0429;
-/** 操作多设备响应 (0x8429) */
-const CMD_OPERATE_HANDHELD_RESP: number = 0x8429;
-/** 查询多连接优先设备 (0x0132) */
-const CMD_QUERY_MULTI_PRIORITY: number = 0x0132;
-/** 多连接优先设备响应 (0x8132) */
-const CMD_MULTI_PRIORITY_RESP: number = 0x8132;
-/** 主动通知事件 (0x0204) */
-const CMD_ACTIVE_REPORT: number = 0x0204;
-/** 多设备连接状态变更通知子类型 (0x06) */
-const EVT_MULTI_CONNECT: number = 0x06;
-/** Air5 Pro 移位后的多设备列表响应 (实际 0x8112，因额外 status 字节右移 1 位) */
-const CMD_MULTI_CONNECT_RESP_SHIFTED: number = 0x1200;
-/** 设置关联设备信息 (0x0408) */
-const CMD_SET_RELATED_DEVICE: number = 0x0408;
-/** 双设备连接 feature (0x11) */
-const FEATURE_DUAL_DEVICE: number = 0x11;
-/** 功能开关设置 (0x0403) */
-const CMD_SET_FEATURE: number = 0x0403;
+import {
+  CmdMultiConnectInfo, CmdMultiConnectResp,
+  CmdOperateHandheld, CmdOperateHandheldResp,
+  CmdQueryMultiPriority, CmdMultiPriorityResp,
+  CmdActiveReport, EvtMultiConnect,
+  CmdSetFeature, FeatureDualDevice,
+  PROTOCOL_HEADER,
+  buildPacket, buildFeaturePacket, buildMultiConnectOpPacket, parseMac, toHexStr
+} from '../common/OppoProtocol';
 
 // ============== 回调类型定义 ==============
 
@@ -58,78 +40,7 @@ export type MultiDeviceOpCallback = (result: MultiDeviceOpResult, message: strin
 
 // ============== 协议载荷构造 ==============
 
-/**
- * 将 "AA:BB:CC:DD:EE:FF" 格式 MAC 地址解析为 6 字节数组（正序）
- * 对应 C# OppoProtocol.ParseMac()
- */
-function parseMac(address: string): Uint8Array {
-  const mac = new Uint8Array(6);
-  if (!address) {
-    return mac;
-  }
-  const parts = address.split(':');
-  for (let i = 0; i < 6 && i < parts.length; i++) {
-    try {
-      mac[i] = parseInt(parts[i], 16);
-    } catch (e) {
-      mac[i] = 0;
-    }
-  }
-  return mac;
-}
 
-/**
- * 构造多设备操作载荷 (cmd 0x0429)
- * 对应 C# OppoProtocol.MultiConnectOpPayload()
- *
- * operateType 1/2/3: [type(1)][addr(6)]，MAC 按显示顺序正序写入
- * operateType 4 (设置音频优先设备):
- *   - clearAddress=true (恢复自动切换): [04][00]
- *   - clearAddress=false (指定某设备): [04][01][addr(6)]
- */
-function buildMultiConnectOpPayload(operateType: number, targetAddress: string, clearAddress: boolean = false): Uint8Array {
-  if (operateType === MultiDeviceOpType.SET_PRIORITY) {
-    if (clearAddress) {
-      return new Uint8Array([operateType, 0x00]);
-    } else {
-      const mac = parseMac(targetAddress);
-      const payload = new Uint8Array(8);
-      payload[0] = operateType;
-      payload[1] = 0x01;
-      payload.set(mac, 2);
-      return payload;
-    }
-  } else {
-    const mac = parseMac(targetAddress);
-    const payload = new Uint8Array(7);
-    payload[0] = operateType;
-    payload.set(mac, 1);
-    return payload;
-  }
-}
-
-/**
- * 构造 OPPO 协议帧
- * 对应 C# OppoProtocol.BuildPacket()
- */
-function buildPacket(cmd: number, payload: Uint8Array = new Uint8Array(0)): Uint8Array {
-  const payLen = payload.length;
-  const totalLen = 7 + payLen;
-  const packet = new Uint8Array(2 + totalLen);
-  packet[0] = 0xAA;        // Header
-  packet[1] = totalLen;    // Length
-  packet[2] = 0x00;        // Reserved
-  packet[3] = 0x00;        // Reserved
-  packet[4] = cmd & 0xFF;  // Cmd Low
-  packet[5] = (cmd >> 8) & 0xFF; // Cmd High
-  packet[6] = 0xF0;        // Seq
-  packet[7] = payLen & 0xFF;
-  packet[8] = (payLen >> 8) & 0xFF;
-  for (let i = 0; i < payLen; i++) {
-    packet[9 + i] = payload[i];
-  }
-  return packet;
-}
 
 // ============== 响应解析 ==============
 
@@ -374,12 +285,20 @@ export function parseMultiPriorityResponse(data: Uint8Array): MultiPriorityInfo 
   // 标准格式 payLen>=3: [status(1)][level(1)][modeByte(1)][addrLE(6)?]
   let level: number;
   let modeByte: number;
+  let autoMode = false;
+  let priorityAddr = '';
 
   if (payLen === 2) {
-    // Air5 Pro 紧凑格式：无 status 字节
+    // Air5 Pro 紧凑格式：[level(1)][modeByte(1)]，无 status 字节，无地址数据
     level = data[start];
     modeByte = data[start + 1];
-    console.info(`[MultiDevice] parseMultiPriority: Air5 Pro 紧凑格式 level=${level} modeByte=0x${modeByte.toString(16)}`);
+    autoMode = (level === 2 && modeByte === 0);
+    priorityAddr = '';
+    info.autoMode = autoMode;
+    info.priorityAddress = priorityAddr;
+    info.level = level;
+    console.info(`[MultiDevice] parseMultiPriority: Air5 Pro 紧凑格式 level=${level} modeByte=0x${modeByte.toString(16)} auto=${autoMode}`);
+    return info;
   } else if (payLen >= 3) {
     // 标准格式：有 status 字节
     const statusByte = data[start];
@@ -392,8 +311,6 @@ export function parseMultiPriorityResponse(data: Uint8Array): MultiPriorityInfo 
     console.info(`[MultiDevice] parseMultiPriority: payLen=${payLen} 过小，无法解析`);
     return null;
   }
-  let autoMode = false;
-  let priorityAddr = '';
   const isHighLevel = level === 2;
 
   if (isHighLevel) {
@@ -552,10 +469,10 @@ export class MultiDeviceManager {
    * 由 OppoEarphoneManager 的 sppRead 回调调用，用于路由响应到正确的解析器
    */
   isMultiDeviceCommand(cmd: number): boolean {
-    return cmd === CMD_MULTI_CONNECT_RESP ||
-           cmd === CMD_MULTI_PRIORITY_RESP ||
-           cmd === CMD_OPERATE_HANDHELD_RESP ||
-           (cmd === CMD_ACTIVE_REPORT);
+    return cmd === CmdMultiConnectResp ||
+           cmd === CmdMultiPriorityResp ||
+           cmd === CmdOperateHandheldResp ||
+           (cmd === CmdActiveReport);
   }
 
   /**
@@ -576,31 +493,30 @@ export class MultiDeviceManager {
     const start = 9;
 
     switch (cmd) {
-      case CMD_MULTI_CONNECT_RESP:
+      case CmdMultiConnectResp:
         // 0x8112: 多设备列表响应（标准格式）
         this.handleMultiConnectResponse(data);
         return true;
 
-      case CMD_MULTI_CONNECT_RESP_SHIFTED:
-        // 0x1200: Air5 Pro 移位后的 0x8112（额外 status 字节导致 cmd 右移）
+      case 0x1200: // Air5 Pro 移位后的 0x8112（额外 status 字节导致 cmd 右移）
         // 实际 cmd 位于 data[5-6]，payLen 位于 data[8-9]，payload 从 data[10] 开始
         console.info('[MultiDevice] 检测到 Air5 Pro 移位响应(0x1200→0x8112)，按+1偏移解析');
         this.handleShiftedMultiConnectResponse(data);
         return true;
 
-      case CMD_MULTI_PRIORITY_RESP:
+      case CmdMultiPriorityResp:
         // 0x8132: 多连接优先设备响应
         this.handleMultiPriorityResponse(data);
         return true;
 
-      case CMD_OPERATE_HANDHELD_RESP:
+      case CmdOperateHandheldResp:
         // 0x8429: 多设备操作响应
         this.handleOperateResponse(data);
         return true;
 
-      case CMD_ACTIVE_REPORT:
+      case CmdActiveReport:
         // 0x0204: 主动通知 - 检查是否为多连接状态变更
-        if (payLen > 0 && data[start] === EVT_MULTI_CONNECT) {
+        if (payLen > 0 && data[start] === EvtMultiConnect) {
           console.info('[MultiDevice] 收到多连接状态变更通知，刷新设备列表');
           this.queryDeviceList();
           return true;
@@ -638,7 +554,7 @@ export class MultiDeviceManager {
       return;
     }
     console.info('[MultiDevice] 查询多设备连接列表');
-    const packet = buildPacket(CMD_MULTI_CONNECT_INFO);
+    const packet = buildPacket(CmdMultiConnectInfo);
     this.sendPacket(packet);
   }
 
@@ -651,7 +567,7 @@ export class MultiDeviceManager {
       return;
     }
     console.info('[MultiDevice] 查询多连接优先设备');
-    const packet = buildPacket(CMD_QUERY_MULTI_PRIORITY);
+    const packet = buildPacket(CmdQueryMultiPriority);
     this.sendPacket(packet);
   }
 
@@ -666,8 +582,7 @@ export class MultiDeviceManager {
       return;
     }
     console.info(`[MultiDevice] 多设备操作: 连接 addr=${targetAddress}`);
-    const payload = buildMultiConnectOpPayload(MultiDeviceOpType.CONNECT, targetAddress);
-    const packet = buildPacket(CMD_OPERATE_HANDHELD, payload);
+    const packet = buildMultiConnectOpPacket(MultiDeviceOpType.CONNECT, targetAddress);
     this.sendPacket(packet);
   }
 
@@ -680,8 +595,7 @@ export class MultiDeviceManager {
       return;
     }
     console.info(`[MultiDevice] 多设备操作: 断开 addr=${targetAddress}`);
-    const payload = buildMultiConnectOpPayload(MultiDeviceOpType.DISCONNECT, targetAddress);
-    const packet = buildPacket(CMD_OPERATE_HANDHELD, payload);
+    const packet = buildMultiConnectOpPacket(MultiDeviceOpType.DISCONNECT, targetAddress);
     this.sendPacket(packet);
   }
 
@@ -694,8 +608,7 @@ export class MultiDeviceManager {
       return;
     }
     console.info(`[MultiDevice] 多设备操作: 取消配对 addr=${targetAddress}`);
-    const payload = buildMultiConnectOpPayload(MultiDeviceOpType.UNPAIR, targetAddress);
-    const packet = buildPacket(CMD_OPERATE_HANDHELD, payload);
+    const packet = buildMultiConnectOpPacket(MultiDeviceOpType.UNPAIR, targetAddress);
     this.sendPacket(packet);
   }
 
@@ -708,8 +621,7 @@ export class MultiDeviceManager {
       return;
     }
     console.info(`[MultiDevice] 多设备操作: 设为优先设备 addr=${targetAddress}`);
-    const payload = buildMultiConnectOpPayload(MultiDeviceOpType.SET_PRIORITY, targetAddress, false);
-    const packet = buildPacket(CMD_OPERATE_HANDHELD, payload);
+    const packet = buildMultiConnectOpPacket(MultiDeviceOpType.SET_PRIORITY, targetAddress, false);
     this.sendPacket(packet);
     // 乐观更新：立即显示手动优先模式
     this.priorityInfo.autoMode = false;
@@ -728,8 +640,7 @@ export class MultiDeviceManager {
       return;
     }
     console.info('[MultiDevice] 多设备操作: 恢复自动切换');
-    const payload = buildMultiConnectOpPayload(MultiDeviceOpType.SET_PRIORITY, '', true);
-    const packet = buildPacket(CMD_OPERATE_HANDHELD, payload);
+    const packet = buildMultiConnectOpPacket(MultiDeviceOpType.SET_PRIORITY, '', true);
     this.sendPacket(packet);
     // 乐观更新：立即设置 autoMode，确保 UI 即时反映
     this.priorityInfo.autoMode = true;
@@ -748,8 +659,7 @@ export class MultiDeviceManager {
       return;
     }
     console.info(`[MultiDevice] 设置双设备连接: ${enabled ? '开启' : '关闭'}`);
-    const payload = new Uint8Array([FEATURE_DUAL_DEVICE, enabled ? 0x01 : 0x00]);
-    const packet = buildPacket(CMD_SET_FEATURE, payload);
+    const packet = buildFeaturePacket(FeatureDualDevice, enabled);
     this.sendPacket(packet);
   }
 
@@ -781,7 +691,7 @@ export class MultiDeviceManager {
     const realCmdLow = data[5];
     const realCmdHigh = data[6];
     const realCmd = realCmdLow | (realCmdHigh << 8);
-    if (realCmd !== CMD_MULTI_CONNECT_RESP) {
+    if (realCmd !== CmdMultiConnectResp) {
       console.info(`[MultiDevice] 移位响应实际 cmd=0x${realCmd.toString(16)}，不是 0x8112，忽略`);
       return;
     }
@@ -826,8 +736,20 @@ export class MultiDeviceManager {
 
     const info = parseMultiPriorityResponse(data);
     if (info) {
-      this.priorityInfo = info;
-      console.info(`[MultiDevice] 优先级解析成功: autoMode=${info.autoMode}, addr=${info.priorityAddress}`);
+      // Air5 Pro 紧凑格式(payLen=2)无地址数据，无法提供完整优先级状态
+      if (!info.priorityAddress) {
+        if (this.priorityInfo.priorityAddress) {
+          // 用户已设置过优先设备，保留现有状态不被紧凑格式覆盖
+          console.info('[MultiDevice] 紧凑格式无地址，保留现有优先设备状态');
+          return;
+        }
+        // 初始状态：仅更新 autoMode，地址留空
+        this.priorityInfo.autoMode = info.autoMode;
+        this.priorityInfo.level = info.level;
+      } else {
+        this.priorityInfo = info;
+      }
+      console.info(`[MultiDevice] 优先级解析成功: autoMode=${this.priorityInfo.autoMode}, addr=${this.priorityInfo.priorityAddress}`);
       if (this.onPriorityChanged) {
         this.onPriorityChanged(info);
       }

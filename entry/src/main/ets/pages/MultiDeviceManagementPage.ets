@@ -257,7 +257,7 @@ export struct MultiDeviceManagementPage {
       }
       return this.priorityInfo.priorityAddress;
     }
-    return '自动选择';
+    return '手动选择设备';
   }
 
   /** 可用于优先选择的设备（所有已配对设备） */
