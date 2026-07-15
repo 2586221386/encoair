@@ -21,6 +21,8 @@ export default class EntryAbility extends UIAbility {
       let isDark: boolean = this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
       AppStorage.setOrCreate<boolean>('isDarkMode', isDark);
       OppoEarphoneManager.isAppDarkMode = isDark;
+      // 初始化双设备开关 AppStorage 键（MainPageContent 与 MultiDevicePage 联动）
+      AppStorage.setOrCreate<boolean>('dualDeviceEnabled', false);
     } catch (err) {
       hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }

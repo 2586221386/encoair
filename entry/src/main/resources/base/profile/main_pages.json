@@ -3,6 +3,7 @@
     "pages/Index",
     "pages/IndexOld",
     "pages/PopupWindow",
-    "pages/HelpPage"
+    "pages/HelpPage",
+    "pages/MultiDeviceManagementPage"
   ]
 }
