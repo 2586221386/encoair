@@ -1,6 +1,7 @@
 import { OppoEarphoneManager, BatteryInfo, ConnectionStatus, WearState, WearStatus, getAncModeName, SPATIAL_AUDIO_OFF, SPATIAL_AUDIO_FIXED, SPATIAL_AUDIO_HEAD_TRACKING } from '../manager/OppoEarphoneManager';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import router from '@ohos.router';
 import { pageBg, cardBg, statusBg, btnInactiveBg, btnSubBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted, textHint, accentGreen, accentRed, accentOrange, accentBlue, accentGold, accentPrimary, accentPrimaryGlow, cancelOrange, chargingBadgeBg, lowBattBadgeBg, hexTextColor, progressBg, disconnectedGray, grayBtn, tipTextColor, watermarkText, dotSeparator } from '../common/AppTheme';
 
 /**
@@ -137,8 +138,8 @@ export struct MainPageContent {
   @State capsSpatialAudio: boolean = false;
   @State capsSpatialSoundSwitch: boolean = false;
   @State capsAdaptiveAnc: boolean = false;
-  // 双设备连接
-  @State dualDeviceEnabled: boolean = false;
+  // 双设备连接（通过 AppStorage 与多设备管理页双向联动）
+  @StorageLink('dualDeviceEnabled') dualDeviceEnabled: boolean = false;
   // EQ预设
   @State currentEqPreset: number = -1;
   @StorageProp('statusBarHeight') statusBarHeight: number = 0;
@@ -224,6 +225,8 @@ export struct MainPageContent {
       });
     this.manager.setDualDeviceCallback((enabled: boolean) => {
         this.dualDeviceEnabled = enabled;
+        // 同步到 AppStorage，与多设备管理页联动
+        AppStorage.setOrCreate('dualDeviceEnabled', enabled);
         console.info(`[Index] 双设备连接: ${enabled ? '开启' : '关闭'}`);
       });
     this.manager.setEqPresetCallback((preset: number) => {
@@ -903,7 +906,10 @@ export struct MainPageContent {
             .selectedColor('#2A5CFF')
             .switchPointColor('#FFFFFF')
             .onChange((isOn: boolean) => {
+              this.dualDeviceEnabled = isOn;
               this.manager.setDualDeviceConnection(isOn);
+              // 同步到 AppStorage，与多设备管理页联动
+              AppStorage.setOrCreate('dualDeviceEnabled', isOn);
             })
         } else {
           Text('--')
@@ -913,6 +919,10 @@ export struct MainPageContent {
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 8, bottom: 16 })
+      .onClick(() => {
+        // 点击"双设备连接"文字区域进入多设备管理页面
+        router.pushUrl({ url: 'pages/MultiDeviceManagementPage' });
+      })
     }
     .width('85%')
     .borderRadius(16)

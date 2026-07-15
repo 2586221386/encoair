@@ -7,6 +7,8 @@ import { fileIo } from '@kit.CoreFileKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { detectDeviceCapabilities, DeviceCapabilities, CapabilityOverrides, CAP_OVERRIDE_AUTO } from '../common/DeviceCapabilities';
+import { MultiDeviceManager } from './MultiDeviceManager';
+import { ConnectedDeviceInfo, MultiPriorityInfo } from '../common/ConnectedDeviceInfo';
 
 /** 空间音频模式常量 */
 export const SPATIAL_AUDIO_OFF = 0;
@@ -186,6 +188,16 @@ export class OppoEarphoneManager {
   // EQ预设状态 (-1=未知)
   private currentEqPreset: number = -1;
 
+  // ============== 多设备管理 ==============
+  /** 多设备协议管理器 */
+  multiDeviceManager: MultiDeviceManager = new MultiDeviceManager((packet: Uint8Array) => {
+    this.sendRawPacket(packet);
+  });
+  /** 多设备列表变化回调 */
+  private multiDeviceListCallback: ((devices: ConnectedDeviceInfo[]) => void) | null = null;
+  /** 多设备优先级变化回调 */
+  private multiPriorityCallback: ((info: MultiPriorityInfo) => void) | null = null;
+
   // === 设备能力检测 ===
   /** 已连接设备的蓝牙名称（用于能力白名单匹配） */
   private cachedDeviceName: string = '';
@@ -260,6 +272,29 @@ export class OppoEarphoneManager {
   setEqPresetCallback(cb: (preset: number) => void): void { this.eqPresetCallback = cb; }
 
   /**
+   * 设置多设备列表变化回调
+   */
+  setMultiDeviceListCallback(cb: (devices: ConnectedDeviceInfo[]) => void): void {
+    this.multiDeviceListCallback = cb;
+    this.multiDeviceManager.onDeviceListChanged = cb;
+  }
+
+  /**
+   * 设置多设备优先级变化回调
+   */
+  setMultiPriorityCallback(cb: (info: MultiPriorityInfo) => void): void {
+    this.multiPriorityCallback = cb;
+    this.multiDeviceManager.onPriorityChanged = cb;
+  }
+
+  /**
+   * 获取当前双设备开关状态
+   */
+  getDualDeviceEnabled(): boolean {
+    return this.dualDeviceEnabled;
+  }
+
+  /**
    * 获取当前设备能力配置（供外部查询）
    */
   getDeviceCapabilities(): DeviceCapabilities {
@@ -274,9 +309,15 @@ export class OppoEarphoneManager {
     this.cachedDeviceName = deviceName;
     this.loadCapabilityOverrides();
     this.deviceCapabilities = detectDeviceCapabilities(deviceName, this.capabilityOverrides);
+    // 同步多设备管理器能力
+    this.multiDeviceManager.setCapabilities(
+      this.deviceCapabilities.dualDeviceSupported,
+      this.deviceCapabilities.multiConnectManageSupported
+    );
     console.info(`[OppoManager] 设备能力检测完成: name="${deviceName}"` +
       `, spatialSoundSwitch=${this.deviceCapabilities.spatialSoundSwitchSupported}` +
-      `, legacyAnc=${this.deviceCapabilities.legacyAnc}`);
+      `, legacyAnc=${this.deviceCapabilities.legacyAnc}` +
+      `, dualDevice=${this.deviceCapabilities.dualDeviceSupported}`);
   }
 
   /**
@@ -315,6 +356,10 @@ export class OppoEarphoneManager {
     // 重新检测
     if (this.cachedDeviceName) {
       this.deviceCapabilities = detectDeviceCapabilities(this.cachedDeviceName, overrides);
+      this.multiDeviceManager.setCapabilities(
+        this.deviceCapabilities.dualDeviceSupported,
+        this.deviceCapabilities.multiConnectManageSupported
+      );
       console.info('[OppoManager] 能力覆写已应用，重新检测完成');
       // 已连接时重新通知 subscribed 状态，触发 UI（MainPageContent）重读能力标志
       if (this.isConnected) {
@@ -607,6 +652,13 @@ export class OppoEarphoneManager {
         this.handleNaturalDisconnect('SPP IO错误(2901054)，自然断开');
       }
     }
+  }
+
+  /**
+   * 公开的发送原始数据包方法（供 MultiDeviceManager 等外部模块调用）
+   */
+  sendRawPacket(packet: Uint8Array): void {
+    this.sendPacket(packet);
   }
 
   /**
@@ -1042,6 +1094,8 @@ export class OppoEarphoneManager {
             this.parseSwitchFeatureResponse(valueArray);
             // 解析 EQ 预设
             this.parseEqPreset(valueArray);
+            // 解析多设备连接响应（含 0x8112/0x8132/0x8429/0x0204 subType 0x06）
+            this.multiDeviceManager.handleResponse(valueArray);
           });
         } catch (readErr) {
           let error = readErr as BusinessError;
@@ -1069,6 +1123,13 @@ export class OppoEarphoneManager {
           this.querySpatialAudio();
           this.queryDualDevice();
           this.queryEqPreset();
+          // 查询多设备连接列表和优先设备
+          if (this.deviceCapabilities.dualDeviceSupported) {
+            this.multiDeviceManager.queryDeviceList();
+          }
+          if (this.deviceCapabilities.multiConnectManageSupported) {
+            this.multiDeviceManager.queryPriorityDevice();
+          }
           this.startPeriodicQuery();
         }, 300);
       });
@@ -1547,6 +1608,7 @@ export class OppoEarphoneManager {
           this.notifyDualDeviceUpdate(enabled);
           console.info(`[OppoManager] 双设备连接: ${enabled ? '开启' : '关闭'}`);
         }
+        this.multiDeviceManager.handleDualDeviceFeature(data[i + 1]);
       }
     }
   }
@@ -1618,6 +1680,7 @@ export class OppoEarphoneManager {
           this.dualDeviceEnabled = enabled;
           this.notifyDualDeviceUpdate(enabled);
         }
+        this.multiDeviceManager.handleDualDeviceFeature(data[i + 1]);
       }
     }
   }

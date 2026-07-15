@@ -32,6 +32,19 @@ const ADAPTIVE_ANC_DEVICES: string[] = [
   'OPPO Enco Free4',
 ];
 
+/** 支持双设备连接的型号 */
+const DUAL_DEVICE_DEVICES: string[] = [
+  'OPPO Enco Air5',  // 同时匹配 Air5 和 Air5 Pro
+  'OPPO Enco Free4',
+  'OPPO Enco X3',
+];
+
+/** 支持多连接管理（优先设备/自动切换）的型号 */
+const MULTI_CONNECT_MANAGE_DEVICES: string[] = [
+  'OPPO Enco Air5',  // 同时匹配 Air5 和 Air5 Pro
+  'OPPO Enco X3',
+];
+
 // ============== 能力覆写常量 ==============
 
 /** 三态覆写值 */
@@ -51,6 +64,10 @@ export class DeviceCapabilities {
   spatialSoundSwitchSupported: boolean = false;
   /** 是否为旧版 ANC 指令反转 */
   legacyAnc: boolean = false;
+  /** 是否支持双设备连接（feature 0x11） */
+  dualDeviceSupported: boolean = false;
+  /** 是否支持多连接管理（优先设备/自动切换，cmd 0x0132） */
+  multiConnectManageSupported: boolean = false;
 }
 
 /** 能力覆写配置（持久化到 Preferences） */
@@ -91,6 +108,8 @@ export function detectDeviceCapabilities(
     overrides?.adaptiveAnc ?? CAP_OVERRIDE_AUTO,
     isInList(deviceName, ADAPTIVE_ANC_DEVICES)
   );
+  caps.dualDeviceSupported = isInList(deviceName, DUAL_DEVICE_DEVICES);
+  caps.multiConnectManageSupported = isInList(deviceName, MULTI_CONNECT_MANAGE_DEVICES);
 
   return caps;
 }
