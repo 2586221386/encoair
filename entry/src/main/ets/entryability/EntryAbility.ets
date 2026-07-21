@@ -5,6 +5,7 @@ import { common } from '@kit.AbilityKit';
 import { workScheduler } from '@kit.BackgroundTasksKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
+import { preferences } from '@kit.ArkData';
 import { OppoEarphoneManager } from '../manager/OppoEarphoneManager';
 
 const DOMAIN = 0x0000;
@@ -16,7 +17,28 @@ export default class EntryAbility extends UIAbility {
   
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
-      this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      // 读取主题偏好设置
+      let followSystem: boolean = true;
+      let manualDark: boolean = false;
+      try {
+        let pref = preferences.getPreferencesSync(this.context, { name: 'app_settings' });
+        followSystem = pref.getSync('followSystemTheme', true) as boolean;
+        manualDark = pref.getSync('manualDarkMode', false) as boolean;
+      } catch (e) {
+        console.warn('[EntryAbility] 读取主题偏好失败，使用默认值');
+      }
+      // 初始化 AppStorage 键
+      AppStorage.setOrCreate<boolean>('followSystemTheme', followSystem);
+      AppStorage.setOrCreate<boolean>('manualDarkMode', manualDark);
+
+      // 根据偏好设置颜色模式
+      if (followSystem) {
+        this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      } else {
+        this.context.getApplicationContext().setColorMode(
+          manualDark ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+        );
+      }
       // 设置初始主题状态（AppStorage 是 ArkTS 全局对象，无需 import）
       let isDark: boolean = this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
       AppStorage.setOrCreate<boolean>('isDarkMode', isDark);

@@ -238,8 +238,17 @@ export class OppoEarphoneManager {
   // 定时查询定时器
   private queryTimer: number = -1;
 
-  // 系统级断开检测定时器（每5秒检查系统音频配置状态）
+  // 系统级断开检测定时器（自适应间隔检查系统音频配置状态）
   private disconnectCheckTimer: number = -1;
+  /** 当前轮询间隔(ms)：快速模式3000，稳定模式5000 */
+  private disconnectPollInterval: number = 3000;
+  private static readonly POLL_INTERVAL_STABLE: number = 5000;
+  private static readonly POLL_INTERVAL_FAST: number = 3000;
+  private pollFastMode: boolean = false;
+  private pollFastTimer: number = -1;
+
+  // SPP 心跳保活定时器（每30秒发送电量查询保持通道活跃）
+  private heartbeatTimer: number = -1;
 
   // 应用上下文（用于卡片数据刷新），使用静态属性以便所有实例共享
   private static appContext: common.Context | null = null;
@@ -256,6 +265,14 @@ export class OppoEarphoneManager {
    */
   getIsConnected(): boolean {
     return this.isConnected;
+  }
+
+  /**
+   * 统一设置连接状态（标记连接标志 + 通知UI）
+   */
+  private setConnected(connected: boolean, status: ConnectionStatus): void {
+    this.isConnected = connected;
+    this.notifyStatus(status);
   }
 
   /**
@@ -321,11 +338,22 @@ export class OppoEarphoneManager {
   getCodecName(): string { return this.codecType >= 0 ? codecName(this.codecType) : '--'; }
 
   /**
-   * 设置多设备列表变化回调
+   * 设置多设备列表变化回调（带交叉验证：当多设备协议报告本机断开时触发断开处理）
    */
   setMultiDeviceListCallback(cb: (devices: ConnectedDeviceInfo[]) => void): void {
     this.multiDeviceListCallback = cb;
-    this.multiDeviceManager.onDeviceListChanged = cb;
+    this.multiDeviceManager.onDeviceListChanged = (devices: ConnectedDeviceInfo[]) => {
+      // 交叉验证：多设备协议报告本机断开，但本地仍标记为已连接
+      if (this.isConnected) {
+        const currentDevice = devices.find(d => d.isCurrentDevice);
+        if (currentDevice && currentDevice.connectionState === 0) {
+          console.info('[OppoManager] 多设备协议报告本机已断开，触发断开处理');
+          this.handleNaturalDisconnect('多设备协议报告断开');
+          return;
+        }
+      }
+      if (cb) cb(devices);
+    };
   }
 
   /**
@@ -472,36 +500,70 @@ export class OppoEarphoneManager {
   }
 
   /**
-   * 启动系统级断开检测定时器
-   * 每5秒检查系统音频配置状态，一旦检测到系统蓝牙音频断开，立即触发断开
-   * 比定时发送SPP信号检测更快更可靠
+   * 启动系统级断开检测（自适应间隔轮询）
+   * 连接初期快速轮询(3s)，稳定后降为5s间隔
    */
   private startDisconnectMonitor(): void {
     this.stopDisconnectMonitor();
-    this.disconnectCheckTimer = setInterval(() => {
+    const poll = () => {
       if (!this.isConnected) return;
       try {
         let state = connection.getProfileConnectionState();
         if (state !== constant.ProfileConnectionState.STATE_CONNECTED) {
-          console.info('[OppoManager] 系统音频配置已断开，清理SPP连接并重启监听...');
-          this.handleNaturalDisconnect('系统音频配置已断开，SPP连接已清理');
+          console.info('[OppoManager] 系统音频配置已断开');
+          this.handleNaturalDisconnect('系统音频配置已断开', 'system_audio');
+          return;
         }
       } catch (err) {
         let error = err as BusinessError;
         console.warn(`[OppoManager] 系统断开检测失败: ${error.message}`);
       }
-    }, 5000);
-    console.info('[OppoManager] 系统级断开检测已启动');
+      this.disconnectCheckTimer = setTimeout(poll, this.disconnectPollInterval);
+    };
+    this.disconnectCheckTimer = setTimeout(poll, this.disconnectPollInterval);
+    console.info(`[OppoManager] 系统级断开检测已启动(间隔=${this.disconnectPollInterval}ms)`);
   }
 
   /**
-   * 停止系统级断开检测定时器
+   * 停止系统级断开检测
    */
   private stopDisconnectMonitor(): void {
     if (this.disconnectCheckTimer !== -1) {
-      clearInterval(this.disconnectCheckTimer);
+      clearTimeout(this.disconnectCheckTimer);
       this.disconnectCheckTimer = -1;
     }
+    if (this.pollFastTimer !== -1) {
+      clearTimeout(this.pollFastTimer);
+      this.pollFastTimer = -1;
+    }
+  }
+
+  /**
+   * 连接成功后调用：启用快速轮询模式(3s间隔)，30秒后自动降回稳定间隔(5s)
+   */
+  private setDisconnectPollFastMode(): void {
+    if (this.pollFastMode) return;
+    this.pollFastMode = true;
+    this.disconnectPollInterval = OppoEarphoneManager.POLL_INTERVAL_FAST;
+    if (this.disconnectCheckTimer !== -1) {
+      this.restartDisconnectMonitor();
+    }
+    clearTimeout(this.pollFastTimer);
+    this.pollFastTimer = setTimeout(() => {
+      this.pollFastMode = false;
+      this.disconnectPollInterval = OppoEarphoneManager.POLL_INTERVAL_STABLE;
+      if (this.disconnectCheckTimer !== -1) {
+        this.restartDisconnectMonitor();
+      }
+    }, 30000);
+  }
+
+  /**
+   * 重启系统级断开检测
+   */
+  private restartDisconnectMonitor(): void {
+    this.stopDisconnectMonitor();
+    this.startDisconnectMonitor();
   }
 
   /**
@@ -719,7 +781,7 @@ export class OppoEarphoneManager {
       let errCode: number = Number(error.code);
       if (errCode === 2901054) {
         console.info('[OppoManager] 检测到SPP IO错误(2901054)，自然断开');
-        this.handleNaturalDisconnect('SPP IO错误(2901054)，自然断开');
+        this.handleNaturalDisconnect('SPP IO错误(2901054)，自然断开', 'spp_io_error');
       }
     }
   }
@@ -1045,6 +1107,30 @@ export class OppoEarphoneManager {
     }
   }
 
+  // ============== SPP 心跳保活 ==============
+
+  /**
+   * 启动 SPP 心跳保活（每30秒发送电量查询，保持SPP通道活跃 + 快速感知断开）
+   */
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.isConnected) return;
+      this.queryBattery();
+    }, 30000);
+    console.info('[OppoManager] SPP 心跳保活已启动(间隔=30000ms)');
+  }
+
+  /**
+   * 停止 SPP 心跳保活
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== -1) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = -1;
+    }
+  }
+
   // ============== 工具方法 ==============
 
   /**
@@ -1177,6 +1263,7 @@ export class OppoEarphoneManager {
    */
   disconnect(silent: boolean = false): void {
     this.stopContinuousMonitor();
+    this.stopHeartbeat();
     this.stopPeriodicQuery();
     this.stopDisconnectMonitor();
     this.cancelReconnect();
@@ -1186,7 +1273,7 @@ export class OppoEarphoneManager {
     this.cachedDeviceName = '';
     this.deviceCapabilities = new DeviceCapabilities();
     this.cleanup(silent);
-    this.notifyStatus('disconnected');
+    this.setConnected(false, 'disconnected');
   }
 
   // ============== SPP RFCOMM 连接核心逻辑 ==============
@@ -1231,7 +1318,7 @@ export class OppoEarphoneManager {
         // 连接成功
         console.info(`[OppoManager] SPP RFCOMM 连接成功! clientNumber=${clientNum}, UUID=${this.RFCOMM_UUID}`);
         this.sppClientNumber = clientNum;
-        this.isConnected = true;
+        this.setConnected(true, 'connected');
         this.saveConnectedMac(macAddress);
         this.reconnectAttempts = 0;
 
@@ -1250,7 +1337,7 @@ export class OppoEarphoneManager {
             // 空数据表示蓝牙连接已自然断开（耳机断电/超出范围）
             if (valueArray.length === 0) {
               console.info('[OppoManager] sppRead收到空数据，检测到自然断开');
-              this.handleNaturalDisconnect('sppRead收到空数据，自然断开');
+              this.handleNaturalDisconnect('sppRead收到空数据，自然断开', 'spp_empty');
               return;
             }
             if (valueArray.length >= 9 && valueArray[0] === 0xAA) {
@@ -1303,8 +1390,12 @@ export class OppoEarphoneManager {
         // 启动后台保活 + 常驻通知
         this.startBackgroundService();
 
-        // 启动系统级断开检测（每5秒检查系统音频配置状态）
+        // 启动系统级断开检测（自适应间隔）
         this.startDisconnectMonitor();
+        // 启用快速轮询模式：连接初期3秒间隔，30秒后降回5秒
+        this.setDisconnectPollFastMode();
+        // 启动 SPP 心跳保活
+        this.startHeartbeat();
 
         // 连接成功后启动 5 阶段初始化（参考 OppoPods ConnectAsync 流程）
         setTimeout(async () => {
@@ -1386,6 +1477,7 @@ export class OppoEarphoneManager {
    * 清理连接资源
    */
   private cleanup(silent: boolean = false): void {
+    this.stopHeartbeat();
     this.closeSocket();
     this.connectedMac = '';
     // 重置电量信息
@@ -1409,17 +1501,38 @@ export class OppoEarphoneManager {
   /**
    * 统一处理自然断开（系统音频断开/SPP空数据/SPP IO错误）
    * 清理所有定时器和后台服务，通知UI断开，自动重启监听等待重连
+   * @param cause 断开原因类型，用于差异化重连策略
+   *   - spp_empty / spp_io_error: 短暂信号丢失，快速重连
+   *   - system_audio / 无: 标准重连
    */
-  private handleNaturalDisconnect(reason: string): void {
+  private handleNaturalDisconnect(reason: string, cause?: 'system_audio' | 'spp_empty' | 'spp_io_error'): void {
     console.info(`[OppoManager] ${reason}`);
     this.stopDisconnectMonitor();
+    this.stopHeartbeat();
     this.stopPeriodicQuery();
     this.cancelReconnect();
-    this.stopBackgroundService();
+    // 检查用户是否开启了“断连保持后台”开关
+    let keepBg = false;
+    try {
+      if (OppoEarphoneManager.appContext) {
+        let pref = preferences.getPreferencesSync(OppoEarphoneManager.appContext, { name: 'app_settings' });
+        keepBg = pref.getSync('keepBackgroundActive', false) as boolean;
+      }
+    } catch (e) { /* 忽略 */ }
+    if (!keepBg) {
+      this.stopBackgroundService();
+    }
     this.cleanup(false);
-    this.notifyStatus('disconnected');
-    // 系统断开后自动重启监听，等待耳机重连
-    this.startContinuousMonitor();
+    this.setConnected(false, 'disconnected');
+    // 差异化重连策略
+    if (cause === 'spp_empty' || cause === 'spp_io_error') {
+      // 短暂信号丢失：快速重连，立即启动监听
+      console.info('[OppoManager] SPP信号丢失，启动快速重连');
+      this.startContinuousMonitor();
+    } else {
+      // 系统音频断开或未知原因：标准重连
+      this.startContinuousMonitor();
+    }
   }
 
   // ============== 数据解析（与 BLE 版本完全相同） ==============
@@ -2105,8 +2218,16 @@ export class OppoEarphoneManager {
       let chargingR = this.batteryInfo.rightCharging ? '⚡' : '';
       let chargingC = this.batteryInfo.caseCharging ? '⚡' : '';
 
-      let title = `Air5 Pro 已连接 | ANC: ${ancName}`;
-      let text = `左耳 ${l}${chargingL}  右耳 ${r}${chargingR}  仓 ${c}${chargingC}`;
+      let title: string;
+      let text: string;
+      if (this.isConnected) {
+        let ancName = getAncModeName(this.currentAncMode);
+        title = `Air5 Pro 已连接 | ANC: ${ancName}`;
+        text = `左耳 ${l}${chargingL}  右耳 ${r}${chargingR}  仓 ${c}${chargingC}`;
+      } else {
+        title = `Air5 Pro 后台监听中`;
+        text = `等待耳机重新连接...`;
+      }
 
       let notification: notificationManager.NotificationRequest = {
         id: OppoEarphoneManager.NOTIFICATION_ID,

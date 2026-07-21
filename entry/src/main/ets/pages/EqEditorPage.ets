@@ -4,7 +4,7 @@
  */
 import { OppoEarphoneManager } from '../manager/OppoEarphoneManager';
 import router from '@ohos.router';
-import { cardBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted, btnInactiveBg, accentPrimary, accentGreen, pageBg, tipTextColor } from '../common/AppTheme';
+import { cardBg, textPrimary, textSecondary, textTertiary, textMuted, btnInactiveBg, accentPrimary, accentGreen, pageBg, tipTextColor } from '../common/AppTheme';
 import { EqInfoEntry } from '../common/OppoProtocol';
 
 /** 10 段 EQ 频段标签 */
@@ -144,9 +144,8 @@ export struct EqEditorPage {
             }, (label: string) => label)
           }
           .width('90%')
-          .borderRadius(16)
+          .borderRadius(20)
           .backgroundColor(cardBg(this.isDarkMode))
-          .border({ width: 1, color: borderColor(this.isDarkMode) })
           .padding({ top: 8, bottom: 8, left: 4, right: 4 })
 
           // ===== 说明 =====
@@ -164,7 +163,7 @@ export struct EqEditorPage {
               .fontColor(textSecondary(this.isDarkMode))
               .height(40)
               .backgroundColor(btnInactiveBg(this.isDarkMode))
-              .borderRadius(20)
+              .borderRadius(24)
               .layoutWeight(1)
               .margin({ right: 8 })
               .onClick(() => {
@@ -175,8 +174,8 @@ export struct EqEditorPage {
               .fontSize(14)
               .fontColor('#FFFFFF')
               .height(40)
-              .backgroundColor('#2A5CFF')
-              .borderRadius(20)
+              .backgroundColor(accentPrimary)
+              .borderRadius(24)
               .layoutWeight(1)
               .margin({ left: 8 })
               .onClick(() => {
@@ -194,6 +193,7 @@ export struct EqEditorPage {
       .scrollBar(BarState.Off)
       .edgeEffect(EdgeEffect.Spring)
     }
+    .transition(TransitionEffect.opacity(0.3))
     .width('100%')
     .height('100%')
     .padding({ top: this.statusBarHeight })

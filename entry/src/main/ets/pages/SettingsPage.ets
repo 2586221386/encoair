@@ -1,5 +1,5 @@
 import { OppoEarphoneManager } from '../manager/OppoEarphoneManager';
-import { common, Want } from '@kit.AbilityKit';
+import { common, Want, ConfigurationConstant } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
@@ -8,7 +8,7 @@ import { image } from '@kit.ImageKit';
 import { formProvider } from '@kit.FormKit';
 import { notificationManager } from '@kit.NotificationKit';
 import router from '@ohos.router';
-import { cardBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted, descTextColor, tipTextColor, btnInactiveBg, accentPrimary, accentGreen } from '../common/AppTheme';
+import { cardBg, textPrimary, textSecondary, textTertiary, textMuted, descTextColor, tipTextColor, textHint, hexTextColor, btnInactiveBg, accentPrimary, accentGreen } from '../common/AppTheme';
 import { CapabilityOverrides, CAP_OVERRIDE_AUTO, CAP_OVERRIDE_FORCE_ENABLED, CAP_OVERRIDE_FORCE_DISABLED } from '../common/DeviceCapabilities';
 
 /**
@@ -27,6 +27,9 @@ export struct SettingsPage {
   @State popupBgMessage: string = '';
   // 通知管理
   @State persistentNotifyEnabled: boolean = false;
+  @State keepBackgroundActive: boolean = false;
+  /** Toggle 强制重绘计数器（取消时递增以触发 UI 回退） */
+  @State toggleRevertFlag: number = 0;
   // HEX 数据展开/收起（设置页独立控制）
   @State showRawHex: boolean = false;
   // 设备能力覆写
@@ -34,6 +37,10 @@ export struct SettingsPage {
   @State spatialSoundOverride: number = CAP_OVERRIDE_AUTO;
   @State legacyAncOverride: number = CAP_OVERRIDE_AUTO;
   @State adaptiveAncOverride: number = CAP_OVERRIDE_AUTO;
+
+  // 主题设置
+  @State followSystemTheme: boolean = true;
+  @State manualDarkMode: boolean = false;
 
   // 操作提示消息
   @State capabilityMessage: string = '';
@@ -45,6 +52,8 @@ export struct SettingsPage {
     this.loadPopupBackground();
     // 加载通知设置
     this.loadNotificationSettings();
+    // 加载主题设置
+    this.loadThemeSettings();
     // 加载能力覆写设置
     this.loadOverrideSettings();
   }
@@ -66,6 +75,75 @@ export struct SettingsPage {
   }
 
   /**
+   * 加载主题设置
+   */
+  private loadThemeSettings(): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let pref = preferences.getPreferencesSync(context, { name: 'app_settings' });
+      this.followSystemTheme = pref.getSync('followSystemTheme', true) as boolean;
+      this.manualDarkMode = pref.getSync('manualDarkMode', false) as boolean;
+    } catch (e) {
+      console.warn('[Settings] 加载主题设置失败');
+    }
+  }
+
+  /**
+   * 切换跟随系统主题
+   */
+  private toggleFollowSystem(isOn: boolean): void {
+    this.followSystemTheme = isOn;
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let pref = preferences.getPreferencesSync(context, { name: 'app_settings' });
+      pref.putSync('followSystemTheme', isOn);
+      pref.flush();
+      AppStorage.setOrCreate<boolean>('followSystemTheme', isOn);
+      // 应用主题模式
+      this.applyThemeMode();
+    } catch (e) {
+      console.warn('[Settings] 保存跟随系统设置失败');
+    }
+  }
+
+  /**
+   * 切换手动深色模式
+   */
+  private toggleManualDarkMode(isOn: boolean): void {
+    this.manualDarkMode = isOn;
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let pref = preferences.getPreferencesSync(context, { name: 'app_settings' });
+      pref.putSync('manualDarkMode', isOn);
+      pref.flush();
+      AppStorage.setOrCreate<boolean>('manualDarkMode', isOn);
+      // 应用主题模式
+      this.applyThemeMode();
+    } catch (e) {
+      console.warn('[Settings] 保存手动深色模式设置失败');
+    }
+  }
+
+  /**
+   * 应用主题模式到系统
+   */
+  private applyThemeMode(): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let appCtx = context.getApplicationContext();
+      if (this.followSystemTheme) {
+        appCtx.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      } else {
+        appCtx.setColorMode(
+          this.manualDarkMode ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+        );
+      }
+    } catch (e) {
+      console.warn('[Settings] 应用主题模式失败');
+    }
+  }
+
+  /**
    * 加载通知设置
    */
   private loadNotificationSettings(): void {
@@ -73,6 +151,7 @@ export struct SettingsPage {
       let context = getContext(this) as common.UIAbilityContext;
       let pref = preferences.getPreferencesSync(context, { name: 'app_settings' });
       this.persistentNotifyEnabled = pref.getSync('persistentNotifyEnabled', false) as boolean;
+      this.keepBackgroundActive = pref.getSync('keepBackgroundActive', false) as boolean;
       // 如果开关打开且已连接，启动后台服务
       if (this.persistentNotifyEnabled && this.manager.getIsConnected()) {
         this.manager.startBackgroundService();
@@ -109,7 +188,9 @@ export struct SettingsPage {
     } else {
       // 关闭
       this.persistentNotifyEnabled = false;
+      this.keepBackgroundActive = false;
       this.saveNotifySetting(false);
+      this.saveKeepBgSetting(false);
       this.manager.stopBackgroundService();
     }
   }
@@ -149,6 +230,60 @@ export struct SettingsPage {
       } else {
         console.error(`[Settings] 请求通知权限失败: ${error.code} ${error.message}`);
       }
+    }
+  }
+
+  /**
+   * 切换断连保持后台开关
+   */
+  private toggleKeepBackground(isOn: boolean): void {
+    if (isOn) {
+      // 打开时弹出高耗电确认提示
+      AlertDialog.show({
+        title: '开启后台活动',
+        message: '开启后，耳机断开连接时应用将在后台持续运行并扫描，可能增加耗电量。部分系统版本可能无法长时间保持在后台。',
+        autoCancel: true,
+        alignment: DialogAlignment.Center,
+        primaryButton: {
+          value: '取消',
+          action: () => {
+            this.keepBackgroundActive = false;
+            this.toggleRevertFlag++;
+          }
+        },
+        secondaryButton: {
+          value: '开启',
+          fontColor: accentPrimary,
+          action: () => {
+            this.keepBackgroundActive = true;
+            this.saveKeepBgSetting(true);
+            if (this.manager.getIsConnected()) {
+              this.manager.startBackgroundService();
+            }
+          }
+        }
+      });
+    } else {
+      // 关闭
+      this.keepBackgroundActive = false;
+      this.saveKeepBgSetting(false);
+      if (!this.persistentNotifyEnabled) {
+        this.manager.stopBackgroundService();
+      }
+    }
+  }
+
+  /**
+   * 保存断连保持后台设置
+   */
+  private saveKeepBgSetting(enabled: boolean): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      let pref = preferences.getPreferencesSync(context, { name: 'app_settings' });
+      pref.putSync('keepBackgroundActive', enabled);
+      pref.flush();
+    } catch (e) {
+      console.warn('[Settings] 保存保持后台设置失败');
     }
   }
 
@@ -289,6 +424,65 @@ export struct SettingsPage {
           .fontColor(textPrimary(this.isDarkMode))
           .margin({ top: 20 })
 
+        // ====== 主题设置 ======
+        Column() {
+          Row() {
+            Text('🌗')
+              .fontSize(18)
+            Text(' 主题设置')
+              .fontSize(14)
+              .fontColor(textSecondary(this.isDarkMode))
+              .margin({ left: 6 })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+
+          Row() {
+            Text('跟随系统深色模式')
+              .fontSize(14)
+              .fontColor(textPrimary(this.isDarkMode))
+              .layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.followSystemTheme })
+              .selectedColor(accentPrimary)
+              .switchPointColor('#FFFFFF')
+              .onChange((isOn: boolean) => {
+                this.toggleFollowSystem(isOn);
+              })
+          }
+          .width('85%')
+          .height(44)
+          .padding({ left: 12, right: 4 })
+
+          if (!this.followSystemTheme) {
+            Row() {
+              Text('深色模式')
+                .fontSize(14)
+                .fontColor(textPrimary(this.isDarkMode))
+                .layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.manualDarkMode })
+                .selectedColor(accentPrimary)
+                .switchPointColor('#FFFFFF')
+                .onChange((isOn: boolean) => {
+                  this.toggleManualDarkMode(isOn);
+                })
+            }
+            .width('85%')
+            .height(44)
+            .padding({ left: 12, right: 4 })
+          }
+
+          Text(this.followSystemTheme ? '自动跟随系统切换深色和浅色模式' : '手动切换深色/浅色模式')
+            .fontSize(11)
+            .fontColor(descTextColor(this.isDarkMode))
+            .width('85%')
+            .margin({ bottom: 12 })
+        }
+        .width('85%')
+        .borderRadius(20)
+        .backgroundColor(cardBg(this.isDarkMode))
+        .margin({ top: 28 })
+        .alignItems(HorizontalAlign.Center)
+
         // ====== 通知管理 ======
         Column() {
           Row() {
@@ -308,7 +502,7 @@ export struct SettingsPage {
               .fontColor(textPrimary(this.isDarkMode))
               .layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.persistentNotifyEnabled })
-              .selectedColor('#2A5CFF')
+              .selectedColor(accentPrimary)
               .switchPointColor('#FFFFFF')
               .onChange((isOn: boolean) => {
                 this.togglePersistentNotification(isOn);
@@ -323,12 +517,39 @@ export struct SettingsPage {
             .fontColor(descTextColor(this.isDarkMode))
             .width('85%')
             .margin({ bottom: 12 })
+
+          // ---- 断连保持后台（仅在常驻通知开启时显示）----
+          if (this.persistentNotifyEnabled) {
+            Row() {
+              Text('耳机未连接时保持后台活动')
+                .fontSize(14)
+                .fontColor(textPrimary(this.isDarkMode))
+                .layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.keepBackgroundActive })
+                .key('keepBg_' + this.toggleRevertFlag)
+                .selectedColor(accentPrimary)
+                .switchPointColor('#FFFFFF')
+                .onChange((isOn: boolean) => {
+                  this.toggleKeepBackground(isOn);
+                })
+            }
+            .width('85%')
+            .height(44)
+            .padding({ left: 12, right: 4 })
+
+            if (this.keepBackgroundActive) {
+              Text('耳机断开后保持后台扫描，以便快速重连；可能增加耗电量')
+                .fontSize(11)
+                .fontColor(descTextColor(this.isDarkMode))
+                .width('85%')
+                .margin({ bottom: 12 })
+            }
+          }
         }
         .width('85%')
-        .borderRadius(16)
+        .borderRadius(20)
         .backgroundColor(cardBg(this.isDarkMode))
-        .border({ width: 1, color: borderColor(this.isDarkMode) })
-        .margin({ top: 24 })
+        .margin({ top: 28 })
         .alignItems(HorizontalAlign.Center)
 
         // ====== 弹窗背景设置 ======
@@ -357,19 +578,18 @@ export struct SettingsPage {
           .width('85%')
           .height(44)
           .backgroundColor(btnInactiveBg(this.isDarkMode))
-          .borderRadius(22)
-          .border({ width: 1, color: borderColor(this.isDarkMode) })
+          .borderRadius(24)
           .onClick(() => {
             this.selectPopupBackground();
           })
 
           Button('预览弹窗')
             .fontSize(14)
-            .fontColor(textPrimary(this.isDarkMode))
+            .fontColor('#FFFFFF')
             .width('85%')
             .height(40)
-            .backgroundColor('#2A5CFF')
-            .borderRadius(20)
+            .backgroundColor(accentPrimary)
+            .borderRadius(24)
             .margin({ top: 10 })
             .onClick(() => {
               this.previewPopup();
@@ -395,10 +615,9 @@ export struct SettingsPage {
           }
         }
         .width('85%')
-        .borderRadius(16)
+        .borderRadius(20)
         .backgroundColor(cardBg(this.isDarkMode))
-        .border({ width: 1, color: borderColor(this.isDarkMode) })
-        .margin({ top: 24 })
+        .margin({ top: 28 })
         .alignItems(HorizontalAlign.Center)
         .padding({ bottom: 16 })
 
@@ -423,20 +642,19 @@ export struct SettingsPage {
 
           Button('打开使用帮助')
             .fontSize(14)
-            .fontColor(textPrimary(this.isDarkMode))
+            .fontColor('#FFFFFF')
             .width('85%')
             .height(40)
-            .backgroundColor('#2A5CFF')
-            .borderRadius(20)
+            .backgroundColor(accentPrimary)
+            .borderRadius(24)
             .onClick(() => {
               router.pushUrl({ url: 'pages/HelpPage' });
             })
         }
         .width('85%')
-        .borderRadius(16)
+        .borderRadius(20)
         .backgroundColor(cardBg(this.isDarkMode))
-        .border({ width: 1, color: borderColor(this.isDarkMode) })
-        .margin({ top: 20 })
+        .margin({ top: 28 })
         .alignItems(HorizontalAlign.Center)
         .padding({ bottom: 16 })
 
@@ -461,20 +679,19 @@ export struct SettingsPage {
 
           Button('添加桌面卡片')
             .fontSize(14)
-            .fontColor(textPrimary(this.isDarkMode))
+            .fontColor('#FFFFFF')
             .width('85%')
             .height(40)
-            .backgroundColor('#2A5CFF')
-            .borderRadius(20)
+            .backgroundColor(accentPrimary)
+            .borderRadius(24)
             .onClick(() => {
               this.openWidgetPicker();
             })
         }
         .width('85%')
-        .borderRadius(16)
+        .borderRadius(20)
         .backgroundColor(cardBg(this.isDarkMode))
-        .border({ width: 1, color: borderColor(this.isDarkMode) })
-        .margin({ top: 20 })
+        .margin({ top: 28 })
         .alignItems(HorizontalAlign.Center)
         .padding({ bottom: 16 })
 
@@ -491,7 +708,7 @@ export struct SettingsPage {
 
             Text(this.showRawHex ? '收起 ▲' : '展开 ▼')
               .fontSize(12)
-              .fontColor('#6666AA')
+              .fontColor(textHint(this.isDarkMode))
           }
           .width('100%')
           .padding({ left: 16, right: 16, top: 10, bottom: 10 })
@@ -503,7 +720,7 @@ export struct SettingsPage {
             Scroll() {
               Text(this.rawHexLog || '等待数据...')
                 .fontSize(11)
-                .fontColor('#88AACC')
+                .fontColor(hexTextColor(this.isDarkMode))
                 .fontFamily('monospace')
                 .width('100%')
                 .copyOption(CopyOptions.LocalDevice)
@@ -514,10 +731,9 @@ export struct SettingsPage {
           }
         }
         .width('85%')
-        .borderRadius(16)
+        .borderRadius(20)
         .backgroundColor(cardBg(this.isDarkMode))
-        .border({ width: 1, color: borderColor(this.isDarkMode) })
-        .margin({ top: 20 })
+        .margin({ top: 28 })
         .clip(true)
 
         // ====== 高级设置：设备能力覆写 ======
@@ -554,7 +770,7 @@ export struct SettingsPage {
               })
           }
           .width('85%')
-          .height(36)
+          .height(40)
 
           // 空间音频协议覆写
           Row() {
@@ -571,7 +787,7 @@ export struct SettingsPage {
               })
           }
           .width('85%')
-          .height(36)
+          .height(40)
 
           // 旧版 ANC 指令覆写
           Row() {
@@ -588,7 +804,7 @@ export struct SettingsPage {
               })
           }
           .width('85%')
-          .height(36)
+          .height(40)
 
           // 自适应降噪覆写
           Row() {
@@ -605,7 +821,7 @@ export struct SettingsPage {
               })
           }
           .width('85%')
-          .height(36)
+          .height(40)
           .margin({ bottom: 12 })
 
           if (this.capabilityMessage) {
@@ -617,11 +833,11 @@ export struct SettingsPage {
           }
         }
         .width('85%')
-        .borderRadius(16)
+        .borderRadius(20)
         .backgroundColor(cardBg(this.isDarkMode))
-        .border({ width: 1, color: borderColor(this.isDarkMode) })
-        .margin({ top: 20 })
+        .margin({ top: 28 })
       }
+      .transition(TransitionEffect.opacity(0.3))
       .width('100%')
       .padding({ top: this.statusBarHeight, bottom: 100 })
       .alignItems(HorizontalAlign.Center)

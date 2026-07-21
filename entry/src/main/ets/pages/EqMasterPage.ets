@@ -4,7 +4,7 @@
  */
 import { OppoEarphoneManager } from '../manager/OppoEarphoneManager';
 import router from '@ohos.router';
-import { cardBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted, btnInactiveBg, accentPrimary, accentGreen, accentRed, pageBg, tipTextColor } from '../common/AppTheme';
+import { cardBg, textPrimary, textSecondary, textTertiary, textMuted, btnInactiveBg, accentPrimary, accentGreen, accentRed, pageBg, tipTextColor } from '../common/AppTheme';
 import { EqInfoEntry } from '../common/OppoProtocol';
 
 @Entry
@@ -42,22 +42,32 @@ export struct EqMasterPage {
   }
 
   build() {
-    Scroll() {
-      Column() {
-        // 标题栏
-        Row() {
-          Text('‹ 大师调音')
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(textPrimary(this.isDarkMode))
-            .onClick(() => {
-              router.back();
-            })
-        }
-        .width('100%')
-        .padding({ left: 16, right: 16, top: 8, bottom: 4 })
+    Column() {
+      // 导航标题栏（固定在顶部，不随滑动移动）
+      Row() {
+        Text('←')
+          .fontSize(22)
+          .fontColor(textPrimary(this.isDarkMode))
+          .width(44)
+          .height(44)
+          .textAlign(TextAlign.Center)
+          .onClick(() => {
+            router.back();
+          })
+        Text('大师调音')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(textPrimary(this.isDarkMode))
+          .margin({ left: 8 })
+        Blank()
+      }
+      .width('100%')
+      .height(56)
+      .padding({ left: 16, right: 16 })
 
-        if (this.connectionStatus === 'subscribed') {
+      Scroll() {
+        Column() {
+          if (this.connectionStatus === 'subscribed') {
           // ===== 默认推荐 EQ =====
           if (this.eqPresetIds.length > 0) {
             Column() {
@@ -88,7 +98,7 @@ export struct EqMasterPage {
                     .fontSize(12)
                     .fontColor(this.currentEqPreset === presetId ? accentGreen : '#FFFFFF')
                     .height(30)
-                    .backgroundColor(this.currentEqPreset === presetId ? '#1A4A2A' : '#2A5CFF')
+                    .backgroundColor(this.currentEqPreset === presetId ? '#1A3A2A' : accentPrimary)
                     .borderRadius(15)
                     .padding({ left: 14, right: 14 })
                     .onClick(() => {
@@ -97,7 +107,7 @@ export struct EqMasterPage {
                     })
                 }
                 .width('100%')
-                .height(46)
+                .height(52)
                 .padding({ left: 16, right: 12 })
                 .borderRadius(12)
                 .backgroundColor(cardBg(this.isDarkMode))
@@ -105,9 +115,8 @@ export struct EqMasterPage {
               }, (presetId: number) => presetId.toString())
             }
             .width('85%')
-            .borderRadius(16)
+            .borderRadius(20)
             .backgroundColor(cardBg(this.isDarkMode))
-            .border({ width: 1, color: borderColor(this.isDarkMode) })
             .margin({ top: 16 })
             .padding({ bottom: 8 })
           }
@@ -154,7 +163,6 @@ export struct EqMasterPage {
                       .height(28)
                       .backgroundColor(btnInactiveBg(this.isDarkMode))
                       .borderRadius(14)
-                      .padding({ left: 10, right: 10 })
                       .margin({ right: 4 })
                       .onClick(() => {
                         router.pushUrl({
@@ -167,7 +175,7 @@ export struct EqMasterPage {
                       .fontSize(11)
                       .fontColor('#FFFFFF')
                       .height(28)
-                      .backgroundColor('#2A5CFF')
+                      .backgroundColor(accentPrimary)
                       .borderRadius(14)
                       .padding({ left: 12, right: 12 })
                       .margin({ right: 4 })
@@ -176,7 +184,7 @@ export struct EqMasterPage {
                       })
                   }
                   .width('100%')
-                  .height(52)
+                  .height(56)
                   .padding({ left: 16, right: 8 })
                   .borderRadius(12)
                   .backgroundColor(cardBg(this.isDarkMode))
@@ -197,8 +205,7 @@ export struct EqMasterPage {
                   .width('100%')
                   .height(44)
                   .backgroundColor(btnInactiveBg(this.isDarkMode))
-                  .borderRadius(12)
-                  .border({ width: 1, color: borderColor(this.isDarkMode) })
+                  .borderRadius(16)
                   .margin({ top: 6 })
                   .onClick(() => {
                     router.pushUrl({ url: 'pages/EqEditorPage' });
@@ -206,9 +213,8 @@ export struct EqMasterPage {
               }
             }
             .width('85%')
-            .borderRadius(16)
+            .borderRadius(20)
             .backgroundColor(cardBg(this.isDarkMode))
-            .border({ width: 1, color: borderColor(this.isDarkMode) })
             .margin({ top: 16 })
             .padding({ bottom: 12 })
           }
@@ -218,7 +224,7 @@ export struct EqMasterPage {
             .fontColor(tipTextColor(this.isDarkMode))
             .width('100%')
             .textAlign(TextAlign.Center)
-            .margin({ top: 20, bottom: 40 })
+            .margin({ top: 24, bottom: 40 })
         } else {
           // 未连接时显示提示
           Column() {
@@ -238,14 +244,21 @@ export struct EqMasterPage {
           .margin({ top: 80 })
         }
       }
+      .transition(TransitionEffect.opacity(0.3))
       .width('100%')
-      .padding({ top: this.statusBarHeight, bottom: 40 })
+      .padding({ bottom: 40 })
       .alignItems(HorizontalAlign.Center)
     }
     .layoutWeight(1)
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)
   }
+  .width('100%')
+  .height('100%')
+  .padding({ top: this.statusBarHeight })
+  .backgroundColor(pageBg(this.isDarkMode))
+  .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
+}
 
   /** 长按删除确认弹窗 */
   private showDeleteConfirm(entry: EqInfoEntry): void {
@@ -260,7 +273,7 @@ export struct EqMasterPage {
       },
       secondaryButton: {
         value: '删除',
-        fontColor: '#FF4444',
+        fontColor: '#FF3B30',
         action: () => {
           this.manager.deleteCustomEq(entry.eqId);
           setTimeout(() => {

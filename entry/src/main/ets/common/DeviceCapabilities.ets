@@ -82,6 +82,12 @@ export class DeviceCapabilities {
   hasSpeechPerception: boolean = false;
   hasSleepDetection: boolean = false;
   hasHeadMotion: boolean = false;
+  hasWhiteNoise: boolean = false;
+  hasMeetingAssistant: boolean = false;
+  hasSpineHealth: boolean = false;
+  hasDiagnostic: boolean = false;
+  hasAutoFirmwareUpdate: boolean = false;
+  hasFitDetection: boolean = false;
 
   // ========== ANC 配置 ==========
   /** protocolIndex → UI 模式名 */
@@ -245,6 +251,12 @@ function applyDeviceEntry(caps: DeviceCapabilities, entry: DeviceModelEntry): vo
   caps.hasSpeechPerception = func.speechPerception ?? false;
   caps.hasSleepDetection = func.sleepDetection ?? false;
   caps.hasHeadMotion = func.headMotion ?? false;
+  caps.hasWhiteNoise = func.whiteNoise ?? false;
+  caps.hasMeetingAssistant = func.meetingAssistant ?? false;
+  caps.hasSpineHealth = func.spineHealth ?? false;
+  caps.hasDiagnostic = func.diagnostic ?? false;
+  caps.hasAutoFirmwareUpdate = func.autoFirmwareUpdate ?? false;
+  caps.hasFitDetection = func.fitDetection ?? false;
 
   // 自定义 EQ 频率
   if (func.customEqFrequency) {

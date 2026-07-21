@@ -3,7 +3,7 @@ import { common, Want } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { preferences } from '@kit.ArkData';
 import EntryAbility from '../entryability/EntryAbility';
-import { popupGradient1, popupGradient2, popupScrimTop, popupScrimBottom, btnInactiveBg } from '../common/AppTheme';
+import { popupGradient1, popupGradient2, popupScrimTop, popupScrimBottom, btnInactiveBg, accentPrimary, accentGreen, accentRed, accentOrange, accentGold, textPrimary, textSecondary, textTertiary, pageBg, disconnectedGray } from '../common/AppTheme';
 
 /**
  * 弹窗界面 - 显示耳机电量
@@ -142,18 +142,18 @@ struct PopupWindow {
 
   getBatteryColor(battery: number, charging: boolean): string {
     if (battery < 0) {
-      return '#666666';
+      return disconnectedGray(this.isDarkMode);
     }
     if (charging) {
-      return '#FFD700';
+      return accentGold(this.isDarkMode);
     }
     if (battery < 20) {
-      return '#FF4444';
+      return accentRed;
     }
     if (battery < 60) {
-      return '#FF9800';
+      return accentOrange;
     }
-    return '#4CAF50';
+    return accentGreen;
   }
 
   getBatteryText(battery: number): string {
@@ -210,13 +210,13 @@ struct PopupWindow {
           Text('Air5 Pro')
             .fontSize(18)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#FFFFFF')
+            .fontColor(textPrimary(this.isDarkMode))
             .margin({ top: 16, bottom: 6 })
 
           // 连接状态提示
           Text(this.loadingText)
             .fontSize(12)
-            .fontColor('#8888AA')
+            .fontColor(textTertiary(this.isDarkMode))
             .margin({ bottom: 16 })
 
           // 电量显示区域
@@ -236,7 +236,7 @@ struct PopupWindow {
                 Text(this.getBatteryText(this.leftBattery))
                   .fontSize(14)
                   .fontWeight(FontWeight.Bold)
-                  .fontColor('#FFFFFF')
+                  .fontColor(textPrimary(this.isDarkMode))
               }
               .width(70)
               .height(70)
@@ -244,7 +244,7 @@ struct PopupWindow {
 
               Text('左耳')
                 .fontSize(11)
-                .fontColor('#AAAACC')
+                .fontColor(textSecondary(this.isDarkMode))
                 .margin({ top: 6 })
 
               if (this.leftCharging) {
@@ -271,7 +271,7 @@ struct PopupWindow {
                 Text(this.getBatteryText(this.rightBattery))
                   .fontSize(14)
                   .fontWeight(FontWeight.Bold)
-                  .fontColor('#FFFFFF')
+                  .fontColor(textPrimary(this.isDarkMode))
               }
               .width(70)
               .height(70)
@@ -279,7 +279,7 @@ struct PopupWindow {
 
               Text('右耳')
                 .fontSize(11)
-                .fontColor('#AAAACC')
+                .fontColor(textSecondary(this.isDarkMode))
                 .margin({ top: 6 })
 
               if (this.rightCharging) {
@@ -306,7 +306,7 @@ struct PopupWindow {
                 Text(this.getBatteryText(this.caseBattery))
                   .fontSize(14)
                   .fontWeight(FontWeight.Bold)
-                  .fontColor('#FFFFFF')
+                  .fontColor(textPrimary(this.isDarkMode))
               }
               .width(70)
               .height(70)
@@ -314,7 +314,7 @@ struct PopupWindow {
 
               Text('充电仓')
                 .fontSize(11)
-                .fontColor('#AAAACC')
+                .fontColor(textSecondary(this.isDarkMode))
                 .margin({ top: 6 })
 
               if (this.caseCharging) {
@@ -333,12 +333,11 @@ struct PopupWindow {
           Row() {
             Button('设置')
               .fontSize(13)
-              .fontColor('#FFFFFF')
+              .fontColor(textPrimary(this.isDarkMode))
               .height(36)
               .layoutWeight(1)
               .backgroundColor(btnInactiveBg(this.isDarkMode))
-              .borderRadius(18)
-              .border({ width: 1, color: '#2A2A5E' })
+              .borderRadius(20)
               .onClick(() => {
                 this.openMainPage();
               })
@@ -351,8 +350,8 @@ struct PopupWindow {
               .fontColor('#FFFFFF')
               .height(36)
               .layoutWeight(1)
-              .backgroundColor('#2A5CFF')
-              .borderRadius(18)
+              .backgroundColor(accentPrimary)
+              .borderRadius(20)
               .onClick(() => {
                 this.closePopup();
               })
@@ -374,15 +373,9 @@ struct PopupWindow {
             ? [[popupScrimTop(this.isDarkMode), 0.0], [popupScrimBottom(this.isDarkMode), 1.0]]
             : [[popupGradient1(this.isDarkMode), 0.0], [popupGradient2(this.isDarkMode), 1.0]]
         })
-        .shadow({
-          radius: 20,
-          color: '#00000040',
-          offsetX: 0,
-          offsetY: -5
-        })
         .border({
           width: 1,
-          color: '#2A2A5E'
+          color: '#00000000'
         })
         .margin({ bottom: 30 })
         .onAreaChange((oldValue: Area, newValue: Area) => {

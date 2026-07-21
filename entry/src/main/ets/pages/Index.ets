@@ -1,7 +1,7 @@
 import { HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit';
 import { MainPageContent } from './MainPageContent';
 import { SettingsPage } from './SettingsPage';
-import { pageBg, tabBarInactive, accentPrimary } from '../common/AppTheme';
+import { pageBg, tabBarInactive } from '../common/AppTheme';
 
 /**
  * 主页面（API 23+ 版）
@@ -57,7 +57,7 @@ struct Index {
   @Builder TabBarItem(icon: string, title: string, index: number) {
     Column() {
       Text(icon).fontSize(22)
-      Text(title).fontSize(11).fontColor(this.currentIndex === index ? accentPrimary : tabBarInactive(this.isDarkMode)).margin({ top: 2 })
+      Text(title).fontSize(11).fontColor(this.currentIndex === index ? '#007AFF' : tabBarInactive(this.isDarkMode)).margin({ top: 2 })
     }
     .width('100%').height('100%')
     .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)

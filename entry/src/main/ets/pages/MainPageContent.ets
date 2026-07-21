@@ -2,7 +2,7 @@ import { OppoEarphoneManager, BatteryInfo, ConnectionStatus, WearState, WearStat
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import router from '@ohos.router';
-import { pageBg, cardBg, statusBg, btnInactiveBg, btnSubBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted, textHint, accentGreen, accentRed, accentOrange, accentBlue, accentGold, accentPrimary, accentPrimaryGlow, cancelOrange, chargingBadgeBg, lowBattBadgeBg, hexTextColor, progressBg, disconnectedGray, grayBtn, tipTextColor, watermarkText, dotSeparator } from '../common/AppTheme';
+import { pageBg, cardBg, statusBg, btnInactiveBg, btnSubBg, textPrimary, textSecondary, textTertiary, textMuted, textHint, accentGreen, accentRed, accentOrange, accentBlue, accentGold, accentPrimary, cancelOrange, chargingBadgeBg, lowBattBadgeBg, hexTextColor, disconnectedGray, grayBtn, tipTextColor, watermarkText, dotSeparator } from '../common/AppTheme';
 
 /**
  * 电量卡片子组件
@@ -25,10 +25,10 @@ struct BatteryCardComponent {
       return accentGold(this.isDarkMode);
     }
     if (this.battery < 20) {
-      return accentRed(this.isDarkMode);
+      return accentRed;
     }
     if (this.battery < 60) {
-      return accentOrange(this.isDarkMode);
+      return accentOrange;
     }
     return accentGreen;
   }
@@ -80,22 +80,21 @@ struct BatteryCardComponent {
         .margin({ top: 6 })
         .padding({ left: 10, right: 10, top: 3, bottom: 3 })
         .borderRadius(12)
-        .backgroundColor('#332200')
+        .backgroundColor(chargingBadgeBg(this.isDarkMode))
       } else if (this.battery >= 0 && this.battery < 20) {
         Text('电量低')
           .fontSize(13)
-          .fontColor(accentRed(this.isDarkMode))
+          .fontColor(accentRed)
           .margin({ top: 6 })
           .padding({ left: 10, right: 10, top: 3, bottom: 3 })
           .borderRadius(12)
-          .backgroundColor('#330000')
+          .backgroundColor(lowBattBadgeBg(this.isDarkMode))
       }
     }
     .width('30%')
-    .padding({ top: 20, bottom: 16, left: 8, right: 8 })
+    .padding({ top: 24, bottom: 20, left: 12, right: 12 })
     .borderRadius(20)
     .backgroundColor(cardBg(this.isDarkMode))
-    .border({ width: 1, color: borderColor(this.isDarkMode) })
     .alignItems(HorizontalAlign.Center)
   }
 }
@@ -348,7 +347,7 @@ export struct MainPageContent {
       case 'scanning':
         return accentBlue(this.isDarkMode);
       case 'connecting':
-        return accentOrange(this.isDarkMode);
+        return accentOrange;
       case 'connected':
         return accentBlue(this.isDarkMode);
       case 'subscribed':
@@ -447,11 +446,10 @@ export struct MainPageContent {
       }
     }
     .width('85%')
-    .padding({ left: 20, right: 20, top: 14, bottom: 14 })
-    .borderRadius(25)
+    .padding({ left: 20, right: 20, top: 16, bottom: 16 })
+    .borderRadius(20)
     .backgroundColor(statusBg(this.isDarkMode))
-    .border({ width: 1, color: borderColor(this.isDarkMode) })
-    .margin({ top: 25 })
+    .margin({ top: 32 })
     .alignItems(HorizontalAlign.Center)
   }
 
@@ -462,9 +460,10 @@ export struct MainPageContent {
       BatteryCardComponent({ battery: this.rightBattery, charging: this.rightCharging, label: '右耳', iconType: 'R' })
       BatteryCardComponent({ battery: this.caseBattery, charging: this.caseCharging, label: '充电仓', iconType: 'C' })
     }
+    .transition(TransitionEffect.opacity(0.3))
     .width('100%')
     .justifyContent(FlexAlign.SpaceEvenly)
-    .margin({ top: 35 })
+    .margin({ top: 32 })
     .padding({ left: 12, right: 12 })
   }
 
@@ -484,8 +483,8 @@ export struct MainPageContent {
         }
         .width('80%')
         .height(52)
-        .backgroundColor('#2A5CFF')
-        .borderRadius(26)
+        .backgroundColor(accentPrimary)
+        .borderRadius(24)
         .enabled(this.hasPermission)
         .opacity(this.hasPermission ? 1.0 : 0.5)
         .onClick(() => {
@@ -506,8 +505,8 @@ export struct MainPageContent {
         }
         .width('80%')
         .height(52)
-        .backgroundColor('#FF6B35')
-        .borderRadius(26)
+        .backgroundColor(accentOrange)
+        .borderRadius(24)
         .onClick(() => {
           this.manager.disconnect();
         })
@@ -524,8 +523,8 @@ export struct MainPageContent {
         }
         .width('80%')
         .height(52)
-        .backgroundColor('#FF4444')
-        .borderRadius(26)
+        .backgroundColor(accentRed)
+        .borderRadius(24)
         .onClick(() => {
           this.manager.disconnect();
         })
@@ -535,11 +534,11 @@ export struct MainPageContent {
       if (!this.hasPermission) {
         Text('请授予蓝牙权限后使用')
           .fontSize(13)
-          .fontColor(accentRed(this.isDarkMode))
+          .fontColor(accentRed)
           .margin({ top: 12 })
       }
     }
-    .margin({ top: 40 })
+    .margin({ top: 32 })
     .width('100%')
     .alignItems(HorizontalAlign.Center)
   }
@@ -581,10 +580,9 @@ export struct MainPageContent {
       }
     }
     .width('85%')
-    .borderRadius(16)
+    .borderRadius(20)
     .backgroundColor(cardBg(this.isDarkMode))
-    .border({ width: 1, color: borderColor(this.isDarkMode) })
-    .margin({ top: 20 })
+    .margin({ top: 24 })
     .clip(true)
   }
 
@@ -609,18 +607,13 @@ export struct MainPageContent {
           // 降噪按钮
           Column() {
             Button('降噪')
-              .fontSize(13)
+              .fontSize(14)
               .fontWeight(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? FontWeight.Bold : FontWeight.Medium)
-              .fontColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#FFFFFF' : '#AAAACC')
+              .fontColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#FFFFFF' : textSecondary(this.isDarkMode))
               .width('90%')
               .height(45)
-              .backgroundColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
-              .borderRadius(12)
-              .border({
-                width: 1,
-                color: this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#4A7CFF' : '#2A2A5E'
-              })
-              .shadow({ radius: 10, color: this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? 8 : 0, offsetY: this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? 8 : 0 })
+              .backgroundColor(this.ancMode === 2 || this.ancMode === 5 || this.ancMode === 6 || this.ancMode === 7 || this.ancMode === 8 ? accentPrimary : btnInactiveBg(this.isDarkMode))
+              .borderRadius(16)
               .onClick(() => {
                 this.manager.setAncMode(2);
               })
@@ -632,18 +625,13 @@ export struct MainPageContent {
           if (this.capsAdaptiveAnc) {
             Column() {
               Button('自适应')
-                .fontSize(8)
+                .fontSize(14)
                 .fontWeight(this.ancMode === 4 ? FontWeight.Bold : FontWeight.Medium)
-                .fontColor(this.ancMode === 4 ? '#FFFFFF' : '#AAAACC')
+                .fontColor(this.ancMode === 4 ? '#FFFFFF' : textSecondary(this.isDarkMode))
                 .width('90%')
                 .height(45)
-                .backgroundColor(this.ancMode === 4 ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
-                .borderRadius(12)
-                .border({
-                  width: 1,
-                  color: this.ancMode === 4 ? '#4A7CFF' : '#2A2A5E'
-                })
-                .shadow({ radius: 10, color: this.ancMode === 4 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 4 ? 8 : 0, offsetY: this.ancMode === 4 ? 8 : 0 })
+                .backgroundColor(this.ancMode === 4 ? accentPrimary : btnInactiveBg(this.isDarkMode))
+                .borderRadius(16)
                 .onClick(() => {
                   this.manager.setAncMode(4);
                 })
@@ -655,18 +643,13 @@ export struct MainPageContent {
           // 关闭按钮
           Column() {
             Button('关闭')
-              .fontSize(13)
+              .fontSize(14)
               .fontWeight(this.ancMode === 1 ? FontWeight.Bold : FontWeight.Medium)
-              .fontColor(this.ancMode === 1 ? '#FFFFFF' : '#AAAACC')
+              .fontColor(this.ancMode === 1 ? '#FFFFFF' : textSecondary(this.isDarkMode))
               .width('90%')
               .height(45)
-              .backgroundColor(this.ancMode === 1 ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
-              .borderRadius(12)
-              .border({
-                width: 1,
-                color: this.ancMode === 1 ? '#4A7CFF' : '#2A2A5E'
-              })
-              .shadow({ radius: 10, color: this.ancMode === 1 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 1 ? 8 : 0, offsetY: this.ancMode === 1 ? 8 : 0 })
+              .backgroundColor(this.ancMode === 1 ? accentPrimary : btnInactiveBg(this.isDarkMode))
+              .borderRadius(16)
               .onClick(() => {
                 this.manager.setAncMode(1);
               })
@@ -677,18 +660,13 @@ export struct MainPageContent {
           // 通透按钮
           Column() {
             Button('通透')
-              .fontSize(13)
+              .fontSize(14)
               .fontWeight(this.ancMode === 3 ? FontWeight.Bold : FontWeight.Medium)
-              .fontColor(this.ancMode === 3 ? '#FFFFFF' : '#AAAACC')
+              .fontColor(this.ancMode === 3 ? '#FFFFFF' : textSecondary(this.isDarkMode))
               .width('90%')
               .height(45)
-              .backgroundColor(this.ancMode === 3 ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
-              .borderRadius(12)
-              .border({
-                width: 1,
-                color: this.ancMode === 3 ? '#4A7CFF' : '#2A2A5E'
-              })
-              .shadow({ radius: 10, color: this.ancMode === 3 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 3 ? 8 : 0, offsetY: this.ancMode === 3 ? 8 : 0 })
+              .backgroundColor(this.ancMode === 3 ? accentPrimary : btnInactiveBg(this.isDarkMode))
+              .borderRadius(16)
               .onClick(() => {
                 this.manager.setAncMode(3);
               })
@@ -705,18 +683,13 @@ export struct MainPageContent {
             // 智能降噪按钮
             Column() {
               Button('智能')
-                .fontSize(12)
+                .fontSize(13)
                 .fontWeight(this.ancMode === 5 ? FontWeight.Bold : FontWeight.Medium)
-                .fontColor(this.ancMode === 5 ? '#FFFFFF' : '#8888AA')
+                .fontColor(this.ancMode === 5 ? '#FFFFFF' : textTertiary(this.isDarkMode))
                 .width('90%')
                 .height(36)
-                .backgroundColor(this.ancMode === 5 ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-                .borderRadius(10)
-                .border({
-                  width: 1,
-                  color: this.ancMode === 5 ? '#4A7CFF' : '#2A2A5E'
-                })
-                .shadow({ radius: 6, color: this.ancMode === 5 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 5 ? 4 : 0, offsetY: this.ancMode === 5 ? 4 : 0 })
+                .backgroundColor(this.ancMode === 5 ? accentPrimary : btnSubBg(this.isDarkMode))
+                .borderRadius(16)
                 .onClick(() => {
                   this.manager.setAncMode(5);
                 })
@@ -727,18 +700,13 @@ export struct MainPageContent {
             // 轻度降噪按钮
             Column() {
               Button('轻度')
-                .fontSize(12)
+                .fontSize(13)
                 .fontWeight(this.ancMode === 6 ? FontWeight.Bold : FontWeight.Medium)
-                .fontColor(this.ancMode === 6 ? '#FFFFFF' : '#8888AA')
+                .fontColor(this.ancMode === 6 ? '#FFFFFF' : textTertiary(this.isDarkMode))
                 .width('90%')
                 .height(36)
-                .backgroundColor(this.ancMode === 6 ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-                .borderRadius(10)
-                .border({
-                  width: 1,
-                  color: this.ancMode === 6 ? '#4A7CFF' : '#2A2A5E'
-                })
-                .shadow({ radius: 6, color: this.ancMode === 6 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 6 ? 4 : 0, offsetY: this.ancMode === 6 ? 4 : 0 })
+                .backgroundColor(this.ancMode === 6 ? accentPrimary : btnSubBg(this.isDarkMode))
+                .borderRadius(16)
                 .onClick(() => {
                   this.manager.setAncMode(6);
                 })
@@ -749,18 +717,13 @@ export struct MainPageContent {
             // 中度降噪按钮
             Column() {
               Button('中度')
-                .fontSize(12)
+                .fontSize(13)
                 .fontWeight(this.ancMode === 7 ? FontWeight.Bold : FontWeight.Medium)
-                .fontColor(this.ancMode === 7 ? '#FFFFFF' : '#8888AA')
+                .fontColor(this.ancMode === 7 ? '#FFFFFF' : textTertiary(this.isDarkMode))
                 .width('90%')
                 .height(36)
-                .backgroundColor(this.ancMode === 7 ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-                .borderRadius(10)
-                .border({
-                  width: 1,
-                  color: this.ancMode === 7 ? '#4A7CFF' : '#2A2A5E'
-                })
-                .shadow({ radius: 6, color: this.ancMode === 7 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 7 ? 4 : 0, offsetY: this.ancMode === 7 ? 4 : 0 })
+                .backgroundColor(this.ancMode === 7 ? accentPrimary : btnSubBg(this.isDarkMode))
+                .borderRadius(16)
                 .onClick(() => {
                   this.manager.setAncMode(7);
                 })
@@ -771,18 +734,13 @@ export struct MainPageContent {
             // 深度降噪按钮
             Column() {
               Button('深度')
-                .fontSize(12)
+                .fontSize(13)
                 .fontWeight(this.ancMode === 8 ? FontWeight.Bold : FontWeight.Medium)
-                .fontColor(this.ancMode === 8 ? '#FFFFFF' : '#8888AA')
+                .fontColor(this.ancMode === 8 ? '#FFFFFF' : textTertiary(this.isDarkMode))
                 .width('90%')
                 .height(36)
-                .backgroundColor(this.ancMode === 8 ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-                .borderRadius(10)
-                .border({
-                  width: 1,
-                  color: this.ancMode === 8 ? '#4A7CFF' : '#2A2A5E'
-                })
-                .shadow({ radius: 6, color: this.ancMode === 8 ? '#4A7CFF' : '#00000000', offsetX: this.ancMode === 8 ? 4 : 0, offsetY: this.ancMode === 8 ? 4 : 0 })
+                .backgroundColor(this.ancMode === 8 ? accentPrimary : btnSubBg(this.isDarkMode))
+                .borderRadius(16)
                 .onClick(() => {
                   this.manager.setAncMode(8);
                 })
@@ -860,7 +818,7 @@ export struct MainPageContent {
           Button(this.gameModeEnabled ? '已开启' : '已关闭')
             .fontSize(13)
             .height(32)
-            .backgroundColor(this.gameModeEnabled ? '#4CAF50' : '#666666')
+            .backgroundColor(this.gameModeEnabled ? accentGreen : grayBtn(this.isDarkMode))
             .borderRadius(16)
             .onClick(() => {
               // 切换游戏模式
@@ -884,7 +842,7 @@ export struct MainPageContent {
           if (this.connectionStatus === 'subscribed') {
             Button(this.gameSoundEnabled ? '已开启' : '已关闭')
               .fontSize(13).height(32)
-              .backgroundColor(this.gameSoundEnabled ? '#4CAF50' : '#666666')
+              .backgroundColor(this.gameSoundEnabled ? accentGreen : grayBtn(this.isDarkMode))
               .borderRadius(16)
               .onClick(() => {
                 this.manager.setGameSoundEnabled(!this.gameSoundEnabled);
@@ -906,18 +864,18 @@ export struct MainPageContent {
           if (this.connectionStatus === 'subscribed') {
             Button('关闭').fontSize(12).height(28)
               .fontWeight(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? FontWeight.Bold : FontWeight.Normal)
-              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode === SPATIAL_AUDIO_OFF ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? accentPrimary : btnSubBg(this.isDarkMode))
+              .borderRadius(14)
               .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_OFF); })
             Button('固定').fontSize(12).height(28)
               .fontWeight(this.spatialAudioMode === SPATIAL_AUDIO_FIXED ? FontWeight.Bold : FontWeight.Normal)
-              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_FIXED ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode === SPATIAL_AUDIO_FIXED ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_FIXED ? accentPrimary : btnSubBg(this.isDarkMode))
+              .borderRadius(14)
               .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_FIXED); })
             Button('头跟').fontSize(12).height(28)
               .fontWeight(this.spatialAudioMode === SPATIAL_AUDIO_HEAD_TRACKING ? FontWeight.Bold : FontWeight.Normal)
-              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_HEAD_TRACKING ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode === SPATIAL_AUDIO_HEAD_TRACKING ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_HEAD_TRACKING ? accentPrimary : btnSubBg(this.isDarkMode))
+              .borderRadius(14)
               .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_HEAD_TRACKING); })
           } else {
             Text('--').fontSize(14).fontColor(textMuted(this.isDarkMode))
@@ -932,13 +890,13 @@ export struct MainPageContent {
           if (this.connectionStatus === 'subscribed') {
             Button('关闭').fontSize(12).height(28)
               .fontWeight(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? FontWeight.Bold : FontWeight.Normal)
-              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode === SPATIAL_AUDIO_OFF ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .backgroundColor(this.spatialAudioMode === SPATIAL_AUDIO_OFF ? accentPrimary : btnSubBg(this.isDarkMode))
+              .borderRadius(14)
               .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_OFF); })
             Button('开启').fontSize(12).height(28)
               .fontWeight(this.spatialAudioMode >= SPATIAL_AUDIO_FIXED ? FontWeight.Bold : FontWeight.Normal)
-              .backgroundColor(this.spatialAudioMode >= SPATIAL_AUDIO_FIXED ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-              .borderRadius(8).border({ width: 1, color: this.spatialAudioMode >= SPATIAL_AUDIO_FIXED ? '#4A7CFF' : borderColor(this.isDarkMode) })
+              .backgroundColor(this.spatialAudioMode >= SPATIAL_AUDIO_FIXED ? accentPrimary : btnSubBg(this.isDarkMode))
+              .borderRadius(14)
               .onClick(() => { this.manager.setSpatialAudio(SPATIAL_AUDIO_FIXED); })
           } else {
             Text('--').fontSize(14).fontColor(textMuted(this.isDarkMode))
@@ -947,10 +905,9 @@ export struct MainPageContent {
       }
     }
     .width('85%')
-    .borderRadius(16)
+    .borderRadius(20)
     .backgroundColor(cardBg(this.isDarkMode))
-    .border({ width: 1, color: borderColor(this.isDarkMode) })
-    .margin({ top: 20 })
+    .margin({ top: 24 })
 
     // 双设备连接
     Column() {
@@ -966,7 +923,7 @@ export struct MainPageContent {
 
         if (this.connectionStatus === 'subscribed') {
           Toggle({ type: ToggleType.Switch, isOn: this.dualDeviceEnabled })
-            .selectedColor('#2A5CFF')
+            .selectedColor(accentPrimary)
             .switchPointColor('#FFFFFF')
             .onChange((isOn: boolean) => {
               this.dualDeviceEnabled = isOn;
@@ -988,10 +945,9 @@ export struct MainPageContent {
       })
     }
     .width('85%')
-    .borderRadius(16)
+    .borderRadius(20)
     .backgroundColor(cardBg(this.isDarkMode))
-    .border({ width: 1, color: borderColor(this.isDarkMode) })
-    .margin({ top: 12 })
+    .margin({ top: 16 })
 
     // 佩戴检测（智能播放暂停）
     if (this.connectionStatus === 'subscribed' && this.manager.getDeviceCapabilities().hasWearDetection) {
@@ -1007,7 +963,7 @@ export struct MainPageContent {
           Blank()
 
           Toggle({ type: ToggleType.Switch, isOn: this.wearDetectionEnabled })
-            .selectedColor('#2A5CFF')
+            .selectedColor(accentPrimary)
             .switchPointColor('#FFFFFF')
             .onChange((isOn: boolean) => {
               this.wearDetectionEnabled = isOn;
@@ -1024,10 +980,9 @@ export struct MainPageContent {
           .padding({ left: 16, right: 16, bottom: 12 })
       }
       .width('85%')
-      .borderRadius(16)
+      .borderRadius(20)
       .backgroundColor(cardBg(this.isDarkMode))
-      .border({ width: 1, color: borderColor(this.isDarkMode) })
-      .margin({ top: 12 })
+      .margin({ top: 16 })
     }
 
     // EQ 大师调音预设（点击进入完整 EQ 管理页面）
@@ -1068,10 +1023,9 @@ export struct MainPageContent {
       })
     }
     .width('85%')
-    .borderRadius(16)
+    .borderRadius(20)
     .backgroundColor(cardBg(this.isDarkMode))
-    .border({ width: 1, color: borderColor(this.isDarkMode) })
-    .margin({ top: 12 })
+    .margin({ top: 16 })
 
     // 设备信息（固件版本 + 编解码器）
     Column() {
@@ -1096,8 +1050,9 @@ export struct MainPageContent {
           .width('100%').padding({ left: 16, right: 16, top: this.firmwareVersion ? 4 : 6, bottom: 12 })
       }
     }
-    .width('85%').borderRadius(16).backgroundColor(cardBg(this.isDarkMode))
-    .border({ width: 1, color: borderColor(this.isDarkMode) }).margin({ top: 12 })
+    .transition(TransitionEffect.opacity(0.3))
+    .width('85%').borderRadius(20).backgroundColor(cardBg(this.isDarkMode))
+    .margin({ top: 16 })
   }
 
   // ANC 单个按钮组件
@@ -1105,18 +1060,13 @@ export struct MainPageContent {
     Column() {
       // 按钮容器
       Button(label)
-        .fontSize(15)
+        .fontSize(14)
         .fontWeight(isSelected ? FontWeight.Bold : FontWeight.Medium)
-        .fontColor(isSelected ? '#FFFFFF' : '#AAAACC')
+        .fontColor(isSelected ? '#FFFFFF' : textSecondary(this.isDarkMode))
         .width('90%')
         .height(45)
-        .backgroundColor(isSelected ? '#2A5CFF' : btnInactiveBg(this.isDarkMode))
-        .borderRadius(12)
-        .border({
-          width: 1,
-          color: isSelected ? '#4A7CFF' : '#2A2A5E'
-        })
-        .shadow({ radius: 10, color: isSelected ? '#4A7CFF' : '#00000000', offsetX: isSelected ? 8 : 0, offsetY: isSelected ? 8 : 0 })
+        .backgroundColor(isSelected ? accentPrimary : btnInactiveBg(this.isDarkMode))
+        .borderRadius(16)
         .onClick(onClick)
     }
     .layoutWeight(1)
@@ -1127,18 +1077,13 @@ export struct MainPageContent {
   @Builder AncSubButton(label: string, isSelected: boolean, onClick: () => void) {
     Column() {
       Button(label)
-        .fontSize(12)
+        .fontSize(13)
         .fontWeight(isSelected ? FontWeight.Bold : FontWeight.Medium)
-        .fontColor(isSelected ? '#FFFFFF' : '#8888AA')
+        .fontColor(isSelected ? '#FFFFFF' : textTertiary(this.isDarkMode))
         .width('90%')
         .height(36)
-        .backgroundColor(isSelected ? '#2A5CFF' : btnSubBg(this.isDarkMode))
-        .borderRadius(10)
-        .border({
-          width: 1,
-          color: isSelected ? '#4A7CFF' : '#2A2A5E'
-        })
-        .shadow({ radius: 6, color: isSelected ? '#4A7CFF' : '#00000000', offsetX: isSelected ? 4 : 0, offsetY: isSelected ? 4 : 0 })
+        .backgroundColor(isSelected ? accentPrimary : btnSubBg(this.isDarkMode))
+        .borderRadius(16)
         .onClick(onClick)
     }
     .layoutWeight(1)
@@ -1164,10 +1109,10 @@ export struct MainPageContent {
   // 佩戴状态颜色
   getWearColor(state: WearState): string {
     switch (state) {
-      case WearState.WEARING: return '#4CAF50';
-      case WearState.IN_CASE: return '#FFD700';
-      case WearState.REMOVED: return '#2196F3';
-      default: return '#666688';
+      case WearState.WEARING: return accentGreen;
+      case WearState.IN_CASE: return accentGold(this.isDarkMode);
+      case WearState.REMOVED: return accentBlue(this.isDarkMode);
+      default: return textMuted(this.isDarkMode);
     }
   }
 

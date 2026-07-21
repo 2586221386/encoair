@@ -18,26 +18,26 @@ struct BatteryWidgetPage {
   @LocalStorageProp('connected') connected: boolean = false;
   @LocalStorageProp('isDarkMode') isDarkMode: boolean = false;
 
-  private get widgetBg(): string { return this.isDarkMode ? '#1A1D2E' : '#FFFFFF'; }
-  private get textPrimary(): string { return this.isDarkMode ? '#E8E8EC' : '#1A1A2E'; }
-  private get textSecondary(): string { return this.isDarkMode ? '#9999AA' : '#555568'; }
-  private get textMuted(): string { return this.isDarkMode ? '#777788' : '#90909A'; }
-  private get progressBg(): string { return this.isDarkMode ? '#2A2A3E' : '#E8E8EC'; }
+  private get widgetBg(): string { return this.isDarkMode ? '#1C1C1E' : '#FFFFFF'; }
+  private get textPrimary(): string { return this.isDarkMode ? '#FFFFFF' : '#1C1C1E'; }
+  private get textSecondary(): string { return this.isDarkMode ? '#8E8E93' : '#3A3A3C'; }
+  private get textMuted(): string { return this.isDarkMode ? '#636366' : '#8E8E93'; }
+  private get progressBg(): string { return this.isDarkMode ? '#38383A' : '#E8E8ED'; }
 
   /**
    * 根据电量返回颜色
    */
   getBatteryColor(battery: number): string {
     if (battery < 0) {
-      return this.isDarkMode ? '#666666' : '#999999';
+      return this.isDarkMode ? '#8E8E93' : '#8E8E93';
     }
     if (battery < 20) {
-      return this.isDarkMode ? '#FF4444' : '#D32F2F';
+      return this.isDarkMode ? '#FF3B30' : '#FF3B30';
     }
     if (battery < 60) {
-      return this.isDarkMode ? '#FF9800' : '#E65100';
+      return this.isDarkMode ? '#FF9500' : '#FF9500';
     }
-    return '#4CAF50';
+    return '#34C759';
   }
 
   /**

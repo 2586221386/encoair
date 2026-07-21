@@ -3,17 +3,21 @@
  * 移植自 OppoPodsManager-main，针对 Air5 Pro 优化
  *
  * UI 结构（从上到下）:
- *   1. 双设备连接开关
- *   2. 优先设备设置（点击弹出选项列表）
- *   3. 已配对设备列表（点击触发连接/断开确认框）
+ *   1. 导航标题栏
+ *   2. 双设备连接开关
+ *   3. 优先设备设置（点击弹出选项列表）
+ *   4. 已配对设备列表（点击触发连接/断开确认框）
+ *   5. 未连接/不支持提示
  */
 
+import router from '@ohos.router';
 import { OppoEarphoneManager } from '../manager/OppoEarphoneManager';
 import { MultiDeviceManager } from '../manager/MultiDeviceManager';
 import { ConnectedDeviceInfo, MultiPriorityInfo, MultiDeviceOpResult } from '../common/ConnectedDeviceInfo';
 import {
-  cardBg, borderColor, textPrimary, textSecondary, textTertiary, textMuted,
-  descTextColor, accentPrimary, accentGreen
+  cardBg, textPrimary, textSecondary, textTertiary, textMuted,
+  descTextColor, accentPrimary, accentGreen, accentOrange, accentRed,
+  accentBlue, accentGold, btnInactiveBg, pageBg, popupScrim
 } from '../common/AppTheme';
 
 @Entry
@@ -70,7 +74,6 @@ export struct MultiDeviceManagementPage {
     this.hasDualDevice = caps.dualDeviceSupported;
     this.hasMultiConnectManage = caps.multiConnectManageSupported;
     this.isEarphoneConnected = this.manager.getIsConnected();
-    // 从 AppStorage 读取双设备开关状态（与 MainPageContent 联动）
     this.dualDeviceEnabled = AppStorage.get<boolean>('dualDeviceEnabled') ?? this.manager.getDualDeviceEnabled();
 
     this.multiDeviceManager.setCapabilities(this.hasDualDevice, this.hasMultiConnectManage);
@@ -79,7 +82,6 @@ export struct MultiDeviceManagementPage {
       this.deviceList = [...devices];
       this.refreshKey++;
       this.isLoading = false;
-      // 设备列表还在更新时也顺便刷新连接状态
       this.isEarphoneConnected = this.manager.getIsConnected();
       this.checkAndStartPolling(devices);
     };
@@ -90,7 +92,6 @@ export struct MultiDeviceManagementPage {
 
     this.multiDeviceManager.onDualDeviceToggleChanged = (enabled: boolean) => {
       this.dualDeviceEnabled = enabled;
-      // 同步到 AppStorage，让 MainPageContent 也能感知变化
       AppStorage.setOrCreate('dualDeviceEnabled', enabled);
     };
 
@@ -98,7 +99,6 @@ export struct MultiDeviceManagementPage {
       this.showToast(result === MultiDeviceOpResult.SUCCESS ? '✓ ' + message : '✗ ' + message);
     };
 
-    // 启动连接状态监视（每3秒检查耳机是否断连）
     this.startConnectionMonitor();
 
     if (this.isEarphoneConnected && this.hasDualDevice) {
@@ -164,7 +164,6 @@ export struct MultiDeviceManagementPage {
 
   // ==================== 连接状态监视 ====================
 
-  /** 启动连接状态监视，检测耳机断连后更新 UI */
   private startConnectionMonitor(): void {
     if (this.connectionMonitorTimer !== -1) {
       return;
@@ -178,7 +177,6 @@ export struct MultiDeviceManagementPage {
     }, this.MONITOR_INTERVAL_MS);
   }
 
-  /** 停止连接状态监视 */
   private stopConnectionMonitor(): void {
     if (this.connectionMonitorTimer !== -1) {
       clearInterval(this.connectionMonitorTimer);
@@ -236,21 +234,19 @@ export struct MultiDeviceManagementPage {
 
   private getConnStateColor(device: ConnectedDeviceInfo): string {
     if (device.connectionState === 2) {
-      return '#4CAF50';
+      return accentGreen;
     }
     if (device.connectionState === 1) {
-      return '#FF9800';
+      return accentOrange;
     }
-    return '#9E9E9E';
+    return '#8E8E93';
   }
 
-  /** 当前优先设备显示文本 */
   private getPriorityDisplayText(): string {
     if (this.priorityInfo.autoMode) {
       return '自动选择';
     }
     if (this.priorityInfo.priorityAddress) {
-      // 从设备列表中查找对应名称
       const found = this.deviceList.find((d) => d.address === this.priorityInfo.priorityAddress);
       if (found) {
         return found.getDisplayName();
@@ -260,7 +256,6 @@ export struct MultiDeviceManagementPage {
     return '手动选择设备';
   }
 
-  /** 可用于优先选择的设备（所有已配对设备） */
   private getSelectableDevices(): ConnectedDeviceInfo[] {
     return this.deviceList;
   }
@@ -269,225 +264,240 @@ export struct MultiDeviceManagementPage {
 
   build() {
     Stack() {
-      Scroll() {
-        Column() {
-          // ---- 标题 ----
-          Text('多设备管理')
+      Column() {
+        // ---- 导航标题栏 ----
+        Row() {
+          Text('←')
             .fontSize(22)
+            .fontColor(textPrimary(this.isDarkMode))
+            .width(44)
+            .height(44)
+            .textAlign(TextAlign.Center)
+            .onClick(() => {
+              router.back();
+            })
+          Text('多设备管理')
+            .fontSize(18)
             .fontWeight(FontWeight.Bold)
             .fontColor(textPrimary(this.isDarkMode))
-            .margin({ top: 20 })
-
-          // ====== 1. 双设备连接开关 ======
-          if (this.hasDualDevice) {
-            Column() {
-              Row() {
-                Text('双设备连接')
-                  .fontSize(15)
-                  .fontColor(textPrimary(this.isDarkMode))
-                  .layoutWeight(1)
-                Toggle({ type: ToggleType.Switch, isOn: this.dualDeviceEnabled })
-                  .selectedColor(accentPrimary)
-                  .switchPointColor('#FFFFFF')
-                  .enabled(this.isEarphoneConnected)
-                  .onChange((isOn: boolean) => {
-                    if (!this.isEarphoneConnected) {
-                      return;
-                    }
-                    this.dualDeviceEnabled = isOn;
-                    this.multiDeviceManager.setDualDeviceEnabled(isOn);
-                    // 同步到 AppStorage，与 MainPageContent 联动
-                    AppStorage.setOrCreate('dualDeviceEnabled', isOn);
-                    if (isOn) {
-                      setTimeout(() => {
-                        this.refreshDeviceList();
-                      }, 500);
-                    }
-                  })
-              }
-              .width('100%')
-              .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-            }
-            .width('85%')
-            .borderRadius(16)
-            .backgroundColor(cardBg(this.isDarkMode))
-            .border({ width: 1, color: borderColor(this.isDarkMode) })
-            .margin({ top: 24 })
-          }
-
-          // ====== 2. 优先设备设置（仅在已连接、双设备开启且支持时显示） ======
-          if (this.hasDualDevice && this.isEarphoneConnected && this.dualDeviceEnabled && this.hasMultiConnectManage) {
-            Column() {
-              Row() {
-                Column() {
-                  Text('优先设备')
-                    .fontSize(14)
-                    .fontColor(textSecondary(this.isDarkMode))
-                  Text(this.getPriorityDisplayText())
-                    .fontSize(13)
-                    .fontColor(textPrimary(this.isDarkMode))
-                    .fontWeight(FontWeight.Medium)
-                    .margin({ top: 2 })
-                }
-                .alignItems(HorizontalAlign.Start)
-                .layoutWeight(1)
-
-                Text('›')
-                  .fontSize(22)
-                  .fontColor(textTertiary(this.isDarkMode))
-              }
-              .width('100%')
-              .padding({ left: 16, right: 12, top: 14, bottom: 14 })
-              .onClick(() => {
-                this.showPrioritySelector = true;
-              })
-            }
-            .width('85%')
-            .borderRadius(16)
-            .backgroundColor(cardBg(this.isDarkMode))
-            .border({ width: 1, color: borderColor(this.isDarkMode) })
-            .margin({ top: 12 })
-          }
-
-          // ====== 3. 已配对设备列表 ======
-          if (this.hasDualDevice && this.dualDeviceEnabled && this.isEarphoneConnected) {
-            Column() {
-              Row() {
-                Text('已配对设备')
-                  .fontSize(14)
-                  .fontColor(textSecondary(this.isDarkMode))
-                  .layoutWeight(1)
-
-                Row() {
-                  Text('🔄')
-                    .fontSize(14)
-                  Text(' 刷新')
-                    .fontSize(12)
-                    .fontColor(textTertiary(this.isDarkMode))
-                }
-                .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-                .borderRadius(12)
-                .border({ width: 1, color: borderColor(this.isDarkMode) })
-                .onClick(() => {
-                  this.refreshDeviceList();
-                  if (this.hasMultiConnectManage) {
-                    this.multiDeviceManager.queryPriorityDevice();
-                  }
-                })
-              }
-              .width('100%')
-              .padding({ left: 16, right: 12, top: 14, bottom: 4 })
-
-              if (this.isLoading && this.deviceList.length === 0) {
-                Row() {
-                  LoadingProgress()
-                    .width(20)
-                    .height(20)
-                    .color(accentPrimary)
-                  Text(' 获取设备列表...')
-                    .fontSize(12)
-                    .fontColor(textTertiary(this.isDarkMode))
-                    .margin({ left: 6 })
-                }
-                .width('100%')
-                .justifyContent(FlexAlign.Center)
-                .padding({ top: 20, bottom: 16 })
-              } else if (this.deviceList.length === 0) {
-                Text('暂无已配对设备')
-                  .fontSize(13)
-                  .fontColor(textMuted(this.isDarkMode))
-                  .width('100%')
-                  .textAlign(TextAlign.Center)
-                  .padding({ top: 20, bottom: 16 })
-              } else {
-                Column() {
-                  ForEach(this.deviceList, (device: ConnectedDeviceInfo) => {
-                    this.DeviceRowBuilder(device)
-                  }, (device: ConnectedDeviceInfo): string => {
-                    return 'dev_' + device.address + '_r' + this.refreshKey.toString();
-                  })
-                }
-                .width('100%')
-                .padding({ bottom: 8 })
-              }
-            }
-            .width('85%')
-            .borderRadius(16)
-            .backgroundColor(cardBg(this.isDarkMode))
-            .border({ width: 1, color: borderColor(this.isDarkMode) })
-            .margin({ top: 12 })
-          }
-
-          // ====== 未连接 / 不支持提示 ======
-          if (!this.isEarphoneConnected) {
-            Column() {
-              Text('🔌')
-                .fontSize(36)
-              Text('请先连接耳机')
-                .fontSize(14)
-                .fontColor(textSecondary(this.isDarkMode))
-                .margin({ top: 8 })
-            }
-            .width('85%')
-            .borderRadius(16)
-            .backgroundColor(cardBg(this.isDarkMode))
-            .border({ width: 1, color: borderColor(this.isDarkMode) })
-            .margin({ top: 24 })
-            .padding({ top: 30, bottom: 30 })
-            .alignItems(HorizontalAlign.Center)
-          }
-
-          if (!this.hasDualDevice && this.isEarphoneConnected) {
-            Column() {
-              Text('ℹ️')
-                .fontSize(36)
-              Text('当前设备不支持双设备连接')
-                .fontSize(14)
-                .fontColor(textSecondary(this.isDarkMode))
-                .margin({ top: 8 })
-            }
-            .width('85%')
-            .borderRadius(16)
-            .backgroundColor(cardBg(this.isDarkMode))
-            .border({ width: 1, color: borderColor(this.isDarkMode) })
-            .margin({ top: 24 })
-            .padding({ top: 30, bottom: 30 })
-            .alignItems(HorizontalAlign.Center)
-          }
-
-          // 底部间距
-          Column().height(120)
+            .margin({ left: 8 })
+          Blank()
         }
         .width('100%')
-        .padding({ top: this.statusBarHeight })
-        .alignItems(HorizontalAlign.Center)
-      }
-      .layoutWeight(1)
-      .scrollBar(BarState.Off)
-      .edgeEffect(EdgeEffect.Spring)
+        .height(56)
+        .padding({ left: 16, right: 16 })
 
-      // ---- Toast ----
-      if (this.toastMessage) {
-        Text(this.toastMessage)
-          .fontSize(13)
-          .fontColor('#FFFFFF')
-          .backgroundColor('#CC333333')
-          .borderRadius(20)
-          .padding({ left: 20, right: 20, top: 10, bottom: 10 })
-          .position({ bottom: 80 })
+        Scroll() {
+          Column() {
+            // ====== 1. 双设备连接开关 ======
+            if (this.hasDualDevice) {
+              Column() {
+                Row() {
+                  Text('双设备连接')
+                    .fontSize(15)
+                    .fontColor(textPrimary(this.isDarkMode))
+                    .layoutWeight(1)
+                  Toggle({ type: ToggleType.Switch, isOn: this.dualDeviceEnabled })
+                    .selectedColor(accentPrimary)
+                    .switchPointColor('#FFFFFF')
+                    .enabled(this.isEarphoneConnected)
+                    .onChange((isOn: boolean) => {
+                      if (!this.isEarphoneConnected) {
+                        return;
+                      }
+                      this.dualDeviceEnabled = isOn;
+                      this.multiDeviceManager.setDualDeviceEnabled(isOn);
+                      AppStorage.setOrCreate('dualDeviceEnabled', isOn);
+                      if (isOn) {
+                        setTimeout(() => {
+                          this.refreshDeviceList();
+                        }, 500);
+                      }
+                    })
+                }
+                .width('100%')
+                .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+              }
+              .width('85%')
+              .borderRadius(20)
+              .backgroundColor(cardBg(this.isDarkMode))
+              .margin({ top: 24 })
+            }
+
+            // ====== 2. 优先设备设置 ======
+            if (this.hasDualDevice && this.isEarphoneConnected && this.dualDeviceEnabled && this.hasMultiConnectManage) {
+              Column() {
+                Row() {
+                  Column() {
+                    Text('优先设备')
+                      .fontSize(14)
+                      .fontColor(textSecondary(this.isDarkMode))
+                    Text(this.getPriorityDisplayText())
+                      .fontSize(13)
+                      .fontColor(textPrimary(this.isDarkMode))
+                      .fontWeight(FontWeight.Medium)
+                      .margin({ top: 2 })
+                  }
+                  .alignItems(HorizontalAlign.Start)
+                  .layoutWeight(1)
+
+                  Text('›')
+                    .fontSize(22)
+                    .fontColor(textTertiary(this.isDarkMode))
+                }
+                .width('100%')
+                .padding({ left: 16, right: 12, top: 14, bottom: 14 })
+                .onClick(() => {
+                  this.showPrioritySelector = true;
+                })
+              }
+              .width('85%')
+              .borderRadius(20)
+              .backgroundColor(cardBg(this.isDarkMode))
+              .margin({ top: 16 })
+            }
+
+            // ====== 3. 已配对设备列表 ======
+            if (this.hasDualDevice && this.dualDeviceEnabled && this.isEarphoneConnected) {
+              Column() {
+                Row() {
+                  Text('已配对设备')
+                    .fontSize(14)
+                    .fontColor(textSecondary(this.isDarkMode))
+                    .layoutWeight(1)
+
+                  Row() {
+                    Text('🔄')
+                      .fontSize(14)
+                    Text(' 刷新')
+                      .fontSize(12)
+                      .fontColor(textTertiary(this.isDarkMode))
+                  }
+                  .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+                  .borderRadius(12)
+                  .onClick(() => {
+                    this.refreshDeviceList();
+                    if (this.hasMultiConnectManage) {
+                      this.multiDeviceManager.queryPriorityDevice();
+                    }
+                  })
+                }
+                .width('100%')
+                .padding({ left: 16, right: 12, top: 14, bottom: 4 })
+
+                if (this.isLoading && this.deviceList.length === 0) {
+                  Row() {
+                    LoadingProgress()
+                      .width(20)
+                      .height(20)
+                      .color(accentPrimary)
+                    Text(' 获取设备列表...')
+                      .fontSize(12)
+                      .fontColor(textTertiary(this.isDarkMode))
+                      .margin({ left: 6 })
+                  }
+                  .width('100%')
+                  .justifyContent(FlexAlign.Center)
+                  .padding({ top: 20, bottom: 16 })
+                } else if (this.deviceList.length === 0) {
+                  Text('暂无已配对设备')
+                    .fontSize(13)
+                    .fontColor(textMuted(this.isDarkMode))
+                    .width('100%')
+                    .textAlign(TextAlign.Center)
+                    .padding({ top: 20, bottom: 16 })
+                } else {
+                  Column() {
+                    ForEach(this.deviceList, (device: ConnectedDeviceInfo) => {
+                      this.DeviceRowBuilder(device)
+                    }, (device: ConnectedDeviceInfo): string => {
+                      return 'dev_' + device.address + '_r' + this.refreshKey.toString();
+                    })
+                  }
+                  .width('100%')
+                  .padding({ bottom: 8 })
+                }
+              }
+              .width('85%')
+              .borderRadius(20)
+              .backgroundColor(cardBg(this.isDarkMode))
+              .margin({ top: 16 })
+            }
+
+            // ====== 未连接提示 ======
+            if (!this.isEarphoneConnected) {
+              Column() {
+                Text('🔌')
+                  .fontSize(36)
+                Text('请先连接耳机')
+                  .fontSize(14)
+                  .fontColor(textSecondary(this.isDarkMode))
+                  .margin({ top: 8 })
+              }
+              .width('85%')
+              .borderRadius(20)
+              .backgroundColor(cardBg(this.isDarkMode))
+              .margin({ top: 24 })
+              .padding({ top: 30, bottom: 30 })
+              .alignItems(HorizontalAlign.Center)
+            }
+
+            // ====== 不支持提示 ======
+            if (!this.hasDualDevice && this.isEarphoneConnected) {
+              Column() {
+                Text('ℹ️')
+                  .fontSize(36)
+                Text('当前设备不支持双设备连接')
+                  .fontSize(14)
+                  .fontColor(textSecondary(this.isDarkMode))
+                  .margin({ top: 8 })
+              }
+              .width('85%')
+              .borderRadius(20)
+              .backgroundColor(cardBg(this.isDarkMode))
+              .margin({ top: 24 })
+              .padding({ top: 30, bottom: 30 })
+              .alignItems(HorizontalAlign.Center)
+            }
+
+            // 底部间距
+            Column().height(120)
+          }
+          .transition(TransitionEffect.opacity(0.3))
+          .width('100%')
+          .padding({ bottom: 100 })
+          .alignItems(HorizontalAlign.Center)
+        }
+        .layoutWeight(1)
+        .scrollBar(BarState.Off)
+        .edgeEffect(EdgeEffect.Spring)
+
+        // ---- Toast ----
+        if (this.toastMessage) {
+          Text(this.toastMessage)
+            .fontSize(13)
+            .fontColor('#FFFFFF')
+            .backgroundColor('#E61C1C1E')
+            .borderRadius(20)
+            .padding({ left: 20, right: 20, top: 10, bottom: 10 })
+            .position({ bottom: 100 })
+        }
       }
+      .width('100%')
+      .height('100%')
+      .padding({ top: this.statusBarHeight })
+      .backgroundColor(pageBg(this.isDarkMode))
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
 
       // ---- 优先设备选择器弹窗 ----
       if (this.showPrioritySelector) {
-        Column() {
-          // 半透明遮罩
-        }
-        .width('100%')
-        .height('100%')
-        .backgroundColor('#80000000')
-        .onClick(() => {
-          this.showPrioritySelector = false;
-        })
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor(popupScrim(this.isDarkMode))
+          .onClick(() => {
+            this.showPrioritySelector = false;
+          })
 
         Column() {
           Text('选择优先设备')
@@ -496,7 +506,7 @@ export struct MultiDeviceManagementPage {
             .fontColor(textPrimary(this.isDarkMode))
             .width('100%')
             .textAlign(TextAlign.Center)
-            .padding({ top: 20, bottom: 8 })
+            .padding({ top: 24, bottom: 8 })
 
           // "自动选择" 按钮
           Row() {
@@ -522,7 +532,7 @@ export struct MultiDeviceManagementPage {
 
           Divider()
             .strokeWidth(0.5)
-            .color(borderColor(this.isDarkMode))
+            .color('#38383A')
             .margin({ left: 20, right: 20 })
 
           // 设备列表（可滚动的子列表）
@@ -570,22 +580,20 @@ export struct MultiDeviceManagementPage {
               .padding({ top: 20, bottom: 16 })
           }
 
-          Blank().height(20)
+          Blank().height(24)
         }
         .width('85%')
         .backgroundColor(cardBg(this.isDarkMode))
         .borderRadius(20)
-        .border({ width: 1, color: borderColor(this.isDarkMode) })
         .position({ x: '7.5%', y: '30%' })
       }
 
       // ---- 确认对话框 ----
       if (this.showConfirmDialog) {
-        // 遮罩
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor('#80000000')
+          .backgroundColor(popupScrim(this.isDarkMode))
           .onClick(() => {
             this.showConfirmDialog = false;
           })
@@ -616,7 +624,7 @@ export struct MultiDeviceManagementPage {
 
           Divider()
             .strokeWidth(0.5)
-            .color(borderColor(this.isDarkMode))
+            .color('#38383A')
 
           Row() {
             Button('取消')
@@ -625,22 +633,24 @@ export struct MultiDeviceManagementPage {
               .backgroundColor('#00000000')
               .layoutWeight(1)
               .height(48)
+              .borderRadius(0)
               .onClick(() => {
                 this.showConfirmDialog = false;
               })
 
             Divider()
               .strokeWidth(0.5)
-              .color(borderColor(this.isDarkMode))
+              .color('#38383A')
               .vertical(true)
               .height(48)
 
             Button('确认')
               .fontSize(15)
-              .fontColor('#FFFFFF')
-              .backgroundColor(accentPrimary)
+              .fontColor(accentPrimary)
+              .backgroundColor('#00000000')
               .layoutWeight(1)
               .height(48)
+              .borderRadius(0)
               .onClick(() => {
                 this.executeConfirmAction();
               })
@@ -651,7 +661,6 @@ export struct MultiDeviceManagementPage {
         .width('80%')
         .backgroundColor(cardBg(this.isDarkMode))
         .borderRadius(20)
-        .border({ width: 1, color: borderColor(this.isDarkMode) })
         .position({ x: '10%', y: '35%' })
       }
     }
@@ -689,12 +698,10 @@ export struct MultiDeviceManagementPage {
     .padding({ left: 16, right: 12, top: 12, bottom: 12 })
     .onClick(() => {
       if (device.connectionState === 2) {
-        // 已连接 → 确认断开
         this.openConfirmDialog('disconnect', device.address, device.getDisplayName());
       } else if (device.connectionState === 1) {
         // 连接中 → 无操作
       } else {
-        // 断开 → 确认连接
         this.openConfirmDialog('connect', device.address, device.getDisplayName());
       }
     })

@@ -12,8 +12,8 @@ struct BatteryWidgetPage1x2 {
   @LocalStorageProp('isConnected') isConnected: boolean = false;
   @LocalStorageProp('isDarkMode') isDarkMode: boolean = false;
 
-  private get widgetBg(): string { return this.isDarkMode ? '#1A1D2E' : '#FFFFFF'; }
-  private get textPrimary(): string { return this.isDarkMode ? '#E8E8EC' : '#1A1A2E'; }
+  private get widgetBg(): string { return this.isDarkMode ? '#1C1C1E' : '#FFFFFF'; }
+  private get textPrimary(): string { return this.isDarkMode ? '#FFFFFF' : '#1C1C1E'; }
   private get textSecondary(): string { return this.isDarkMode ? '#9999AA' : '#555568'; }
   private get dotSep(): string { return this.isDarkMode ? '#555588' : '#BBBBCC'; }
 
