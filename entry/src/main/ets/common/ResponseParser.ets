@@ -12,6 +12,7 @@ import {
   CmdBatteryResp, CmdActiveReport, CmdAncResp,
   CmdBatchQueryResp, CmdSpatialAudioResp, CmdSetFeatureResp,
   CmdEqResp, CmdEqNotify, CmdProductIdResp, CmdCapabilityResp,
+  CmdQueryVolumeValueResp, CmdSetVolumeValueResp,
   EvtBattery, EvtEarBudsStatus, EvtNoiseMode,
   extractCmd, extractPayload, PROTOCOL_HEADER
 } from './OppoProtocol';
@@ -83,6 +84,11 @@ export interface FirmwareVersionResult {
 /** 编解码器解析结果 */
 export interface CodecTypeResult {
   codec: number;
+}
+
+/** 音量解析结果 */
+export interface VolumeResult {
+  value: number;
 }
 
 /** 游戏音效解析结果 */
@@ -541,17 +547,10 @@ export class ResponseParser {
 
     // 尝试多种格式
     // 格式A [status(1)][codec(1)] — SPP短格式
-    if (frame.len === 2 && data[frame.start] === 0) {
+    if (frame.len >= 2 && data[frame.start] === 0) {
       return { codec: data[frame.start + 1] };
     }
-    // 格式B [codecType(1)]... — 部分设备无status字节
-    if (frame.len >= 1) {
-      const codecVal = data[frame.start];
-      if (codecVal >= 0 && codecVal <= 10) {
-        return { codec: codecVal };
-      }
-    }
-    // 格式C [status(1)][count(1)][id(1)][val(1)]... — GATT长格式
+    // 格式B [status(1)][count(1)][id(1)][val(1)]... — GATT长格式
     if (frame.len >= 4 && data[frame.start] === 0) {
       const n = data[frame.start + 1];
       if (n > 0 && frame.len >= 2 + n * 2) {
@@ -587,5 +586,44 @@ export class ResponseParser {
       enabled: selectType !== 0,
       selectType,
     };
+  }
+
+  /**
+   * 解析音量档位响应（0x8130）
+   * 格式: [status(1)][volume(1)]
+   */
+  static parseVolumeValue(data: Uint8Array): VolumeResult | null {
+    if (data.length < 9 || data[0] !== PROTOCOL_HEADER) return null;
+    const cmd = extractCmd(data);
+    if (cmd !== 0x8130) return null;
+
+    const frame = extractPayload(data);
+    if (!frame || frame.len < 1) return null;
+
+    // 格式A [status(1)][volume(1)] — 带status字节
+    if (frame.len >= 2 && data[frame.start] === 0) {
+      return { value: data[frame.start + 1] };
+    }
+    // 格式B [volume(1)] — 无status字节，首字节即为音量值
+    if (frame.len >= 1) {
+      return { value: data[frame.start] };
+    }
+
+    return null;
+  }
+
+  /**
+   * 解析音量设置响应（0x8427）
+   * 格式: [status(1)]
+   */
+  static parseVolumeSetResp(data: Uint8Array): boolean {
+    if (data.length < 9 || data[0] !== PROTOCOL_HEADER) return false;
+    const cmd = extractCmd(data);
+    if (cmd !== 0x8427) return false;
+
+    const frame = extractPayload(data);
+    if (!frame || frame.len < 1) return false;
+
+    return data[frame.start] === 0;
   }
 }

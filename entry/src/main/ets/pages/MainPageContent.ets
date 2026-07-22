@@ -949,42 +949,6 @@ export struct MainPageContent {
     .backgroundColor(cardBg(this.isDarkMode))
     .margin({ top: 16 })
 
-    // 佩戴检测（智能播放暂停）
-    if (this.connectionStatus === 'subscribed' && this.manager.getDeviceCapabilities().hasWearDetection) {
-      Column() {
-        Row() {
-          Text('👂')
-            .fontSize(18)
-          Text(' 佩戴检测')
-            .fontSize(14)
-            .fontColor(textSecondary(this.isDarkMode))
-            .margin({ left: 6 })
-
-          Blank()
-
-          Toggle({ type: ToggleType.Switch, isOn: this.wearDetectionEnabled })
-            .selectedColor(accentPrimary)
-            .switchPointColor('#FFFFFF')
-            .onChange((isOn: boolean) => {
-              this.wearDetectionEnabled = isOn;
-              this.manager.setWearDetection(isOn);
-            })
-        }
-        .width('100%')
-        .padding({ left: 16, right: 16, top: 8, bottom: 4 })
-
-        Text('摘下耳机时自动暂停播放，重新佩戴时继续播放')
-          .fontSize(10)
-          .fontColor(tipTextColor(this.isDarkMode))
-          .width('100%')
-          .padding({ left: 16, right: 16, bottom: 12 })
-      }
-      .width('85%')
-      .borderRadius(20)
-      .backgroundColor(cardBg(this.isDarkMode))
-      .margin({ top: 16 })
-    }
-
     // EQ 大师调音预设（点击进入完整 EQ 管理页面）
     Column() {
       Row() {
@@ -1020,6 +984,40 @@ export struct MainPageContent {
       .padding({ left: 16, right: 16, top: 14, bottom: 14 })
       .onClick(() => {
         router.pushUrl({ url: 'pages/EqMasterPage' });
+      })
+    }
+    .width('85%')
+    .borderRadius(20)
+    .backgroundColor(cardBg(this.isDarkMode))
+    .margin({ top: 16 })
+
+    // 更多设置（佩戴检测、提示音量等）
+    Column() {
+      Row() {
+        Text('⚙️')
+          .fontSize(18)
+        Text(' 更多设置')
+          .fontSize(14)
+          .fontColor(textSecondary(this.isDarkMode))
+          .margin({ left: 6 })
+
+        Blank()
+
+        if (this.connectionStatus === 'subscribed') {
+          Text('佩戴检测、提示音量')
+            .fontSize(11)
+            .fontColor(tipTextColor(this.isDarkMode))
+        }
+
+        Text('›')
+          .fontSize(18)
+          .fontColor(textTertiary(this.isDarkMode))
+          .margin({ left: 4 })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+      .onClick(() => {
+        router.pushUrl({ url: 'pages/MoreSettingsPage' });
       })
     }
     .width('85%')

@@ -111,6 +111,10 @@ export interface DeviceFunctions {
   whiteNoise?: boolean;
   /** 会议助手 */
   meetingAssistant?: boolean;
+  /** 提示音量支持 */
+  promptVolume?: boolean;
+  /** 提示音量范围 [min, max] */
+  promptVolumeRange?: number[];
   /** 脊椎健康 */
   spineHealth?: boolean;
   /** 设备诊断 */
@@ -183,6 +187,8 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
       wearDetection: true,
       findDevice: true,
       autoSwitchLink: true,
+      promptVolume: true,
+      promptVolumeRange: [2, 10],
     },
   },
 
@@ -214,6 +220,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
       ],
       customEqualizer: true,
       wearDetection: true,
+      promptVolume: true,
     },
   },
 
@@ -318,6 +325,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
       findDevice: true,
       wearDetection: true,
       aiTranslate: true,
+      promptVolume: true,
     },
   },
 
@@ -364,6 +372,8 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
       bassEngineSupport: true,
       clickTakePic: true,
       earScan: true,
+      promptVolume: true,
+      promptVolumeRange: [2, 10],
     },
   },
 
@@ -524,6 +534,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { protocolIndex: 0, modeType: 0, name: '默认' },
       ],
       wearDetection: true,
+      promptVolume: true,
     },
   },
 
@@ -544,6 +555,8 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { protocolIndex: 0, modeType: 0, name: '默认' },
       ],
       wearDetection: true,
+      promptVolume: true,
+      promptVolumeRange: [2, 10],
     },
   },
 
@@ -564,6 +577,8 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { protocolIndex: 0, modeType: 0, name: '默认' },
       ],
       wearDetection: true,
+      promptVolume: true,
+      promptVolumeRange: [2, 10],
     },
   },
 
@@ -620,6 +635,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { protocolIndex: 0, modeType: 0, name: '默认' },
       ],
       wearDetection: true,
+      promptVolume: true,
     },
   },
   // ============== 以下条目从 OPPO 欢律 App DeviceModels.json 同步 ==============
@@ -654,6 +670,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { protocolIndex: 2, modeType: 28 },
         { protocolIndex: 4, modeType: 30 },
       ],
+      promptVolume: true,
     },
   },
 
@@ -684,6 +701,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
       equalizerModeByVersion: [
         { protocolIndex: 3, modeType: 12 },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1521,6 +1539,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
       equalizerModeByVersion: [
         { protocolIndex: 8, modeType: 40 },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1572,6 +1591,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
       equalizerModeByVersion: [
         { protocolIndex: 8, modeType: 40 },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1603,6 +1623,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { type: 3, name: '游戏音效3' },
         { type: 0, name: '关闭' },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1634,6 +1655,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { type: 3, name: '游戏音效3' },
         { type: 0, name: '关闭' },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1665,6 +1687,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { type: 3, name: '游戏音效3' },
         { type: 0, name: '关闭' },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1690,6 +1713,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { protocolIndex: 2, modeType: 31 },
         { protocolIndex: 1, modeType: 32 },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1715,6 +1739,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { protocolIndex: 2, modeType: 31 },
         { protocolIndex: 1, modeType: 32 },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1771,6 +1796,8 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { type: 3, name: '游戏音效3' },
         { type: 0, name: '关闭' },
       ],
+      promptVolume: true,
+      promptVolumeRange: [2, 10],
     },
   },
 
@@ -1827,6 +1854,8 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { type: 3, name: '游戏音效3' },
         { type: 0, name: '关闭' },
       ],
+      promptVolume: true,
+      promptVolumeRange: [2, 10],
     },
   },
 
@@ -1859,6 +1888,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { type: 3, name: '游戏音效3' },
         { type: 0, name: '关闭' },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1886,6 +1916,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { protocolIndex: 2, modeType: 14 },
         { protocolIndex: 1, modeType: 12 },
       ],
+      promptVolume: true,
     },
   },
 
@@ -1916,6 +1947,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
       equalizerModeByVersion: [
         { protocolIndex: 3, modeType: 12 },
       ],
+      promptVolume: true,
     },
   },
 
@@ -2640,6 +2672,7 @@ export const DEVICE_MODELS: DeviceModelEntry[] = [
         { protocolIndex: 1, modeType: 14 },
         { protocolIndex: 2, modeType: 12 },
       ],
+      promptVolume: true,
     },
   },
 

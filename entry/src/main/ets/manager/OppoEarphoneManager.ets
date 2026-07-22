@@ -7,6 +7,7 @@ import { fileIo } from '@kit.CoreFileKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { detectDeviceCapabilities, DeviceCapabilities, CapabilityOverrides, CAP_OVERRIDE_AUTO, detectDeviceCapabilitiesById, parseCapabilityBitmap, resolveGameModeProtocol } from '../common/DeviceCapabilities';
+import { findModelByDeviceName } from '../common/DeviceModelsData';
 import { MultiDeviceManager } from './MultiDeviceManager';
 import { ConnectedDeviceInfo, MultiPriorityInfo } from '../common/ConnectedDeviceInfo';
 import {
@@ -16,6 +17,7 @@ import {
   CmdQueryVersion, CmdQueryCodecType, CmdQueryGameSound, CmdQueryHeadsetSpatial,
   CmdMultiConnectInfo, CmdQueryMultiPriority,
   CmdQueryEqAll, CmdSetEqDetail,
+  CmdQueryVolumeValue, CmdSetVolumeValue,
   FeatureDualDevice, FeatureSpatial, FeatureGameMain, FeatureGameLL, FeatureWearDetection,
   PayEmpty, PayQueryAnc, PayRegisterNotify, PayQueryEqAll,
   toHexStr, featurePayload, gameModeFeature, codecName, getAncPayloadForMode,
@@ -121,6 +123,9 @@ export class OppoEarphoneManager {
   // 应用深色模式标志（主应用 EntryAbility 设置，供卡片推送时注入）
   static isAppDarkMode: boolean = true;
 
+  /** 初始化版本号（用于废弃过期 timeout 回调） */
+  private initVersion: number = 0;
+
   // 后台保活状态
   private isBackgroundTaskRunning: boolean = false;
   private static readonly NOTIFICATION_ID: number = 9001;
@@ -200,6 +205,12 @@ export class OppoEarphoneManager {
   // 游戏音效状态
   private gameSoundEnabled: boolean = false;
   private gameSoundCallback: ((enabled: boolean) => void) | null = null;
+
+  // 音量状态
+  private volumeValue: number = -1;
+  private volumeMin: number = 0;
+  private volumeMax: number = 10;
+  private volumeCallback: ((value: number) => void) | null = null;
 
   // 空间音频模式（0=关闭, 1=固定/开启, 2=头部追踪）
   private spatialAudioMode: number = SPATIAL_AUDIO_OFF;
@@ -324,6 +335,16 @@ export class OppoEarphoneManager {
   setGameSoundCallback(cb: (enabled: boolean) => void): void { this.gameSoundCallback = cb; }
   /** 智能 ANC 档位回调 */
   setIntelligentAncCallback(cb: (level: string) => void): void { this.intelligentAncCallback = cb; }
+
+  /** 音量回调 */
+  setVolumeCallback(cb: (value: number) => void): void { this.volumeCallback = cb; }
+
+  /** 获取当前音量 */
+  getVolumeValue(): number { return this.volumeValue; }
+  /** 获取音量最小值 */
+  getVolumeMin(): number { return this.volumeMin; }
+  /** 获取音量最大值 */
+  getVolumeMax(): number { return this.volumeMax; }
 
   /** 固件版本回调 */
   setFirmwareCallback(cb: (version: string) => void): void { this.firmwareCallback = cb; }
@@ -603,13 +624,16 @@ export class OppoEarphoneManager {
         try {
           let deviceName: string = connection.getRemoteDeviceName(mac);
           console.info(`[OppoManager] 已配对设备[${i}]: MAC=${mac}, 名称=${deviceName}`);
-          if (deviceName && deviceName.includes('OPPO Enco')) {
+          // 匹配策略：白名单匹配 → 已保存MAC匹配（用户可能修改了蓝牙名称）
+          const isKnownDevice = deviceName && (findModelByDeviceName(deviceName) !== null);
+          const isSavedDevice = this.savedMac && mac.toUpperCase() === this.savedMac.toUpperCase();
+          if (isKnownDevice || isSavedDevice) {
             // 检查系统音频配置是否已连接
             if (!this.isSystemAudioConnected()) {
-              console.info(`[OppoManager] 发现已配对OPPO耳机，但系统音频未连接，等待系统先建立音频连接`);
+              console.info(`[OppoManager] 发现已知设备，但系统音频未连接，等待系统先建立音频连接`);
               return false;
             }
-            console.info(`[OppoManager] 发现已配对的OPPO耳机且系统音频已连接! 直接SPP连接: ${deviceName} [${mac}]`);
+            console.info(`[OppoManager] 发现已知设备且系统音频已连接! 直接SPP连接: ${deviceName} [${mac}]`);
             this.saveConnectedMac(mac);
             this.connectToEarphone(mac);
             return true;
@@ -1023,6 +1047,27 @@ export class OppoEarphoneManager {
   }
 
   /**
+   * 查询提示音量（Cmd 0x0130）
+   */
+  queryVolumeValue(): void {
+    const packet = this.buildPacket(CmdQueryVolumeValue);
+    this.sendPacket(packet);
+    console.info('[OppoManager] 查询提示音量');
+  }
+
+  /**
+   * 设置提示音量（Cmd 0x0427）
+   * @param value 音量值（通常 0-10）
+   */
+  setVolumeValue(value: number): void {
+    if (value < this.volumeMin || value > this.volumeMax) return;
+    this.volumeValue = value;
+    const packet = this.buildPacket(CmdSetVolumeValue, 0x00, [value]);
+    this.sendPacket(packet);
+    console.info(`[OppoManager] 设置提示音量: ${value}`);
+  }
+
+  /**
    * 创建设备端自定义 EQ 预设（cmd 0x0418, actionType=1）
    * 对应 C# PodManager.SendCustomEq()
    */
@@ -1205,7 +1250,10 @@ export class OppoEarphoneManager {
       for (let device of devices) {
         let deviceName = device.deviceName;
         let deviceMac = device.deviceId;
-        if (deviceName && deviceName.includes('OPPO Enco')) {
+        // 匹配策略：白名单匹配 → 已保存MAC匹配
+        const isKnownDevice = deviceName && (findModelByDeviceName(deviceName) !== null);
+        const isSavedDevice = this.savedMac && deviceMac.toUpperCase() === this.savedMac.toUpperCase();
+        if (isKnownDevice || isSavedDevice) {
           console.info(`[OppoManager] 发现目标耳机! 名字: ${deviceName}, MAC: ${deviceMac}`);
           // 检查系统音频配置是否已连接，避免抢占系统音频连接
           if (!this.isSystemAudioConnected()) {
@@ -1239,15 +1287,16 @@ export class OppoEarphoneManager {
    */
   stopScan(): void {
     if (!this.isScanning) return;
-    try {
-      ble.stopBLEScan();
-      ble.off('BLEDeviceFind');
-      this.isScanning = false;
-      console.info('[OppoManager] 扫描已停止。');
-    } catch (err) {
+    try { ble.stopBLEScan(); } catch (err) {
       let error = err as BusinessError;
-      console.error(`[OppoManager] 停止扫描失败: ${error.message}`);
+      console.warn(`[OppoManager] 停止扫描失败: ${error.message}`);
     }
+    try { ble.off('BLEDeviceFind'); } catch (err) {
+      let error = err as BusinessError;
+      console.warn(`[OppoManager] 移除BLE监听器失败: ${error.message}`);
+    }
+    this.isScanning = false;
+    console.info('[OppoManager] 扫描已停止。');
   }
 
   /**
@@ -1378,6 +1427,10 @@ export class OppoEarphoneManager {
             this.handleEqAllResponse(valueArray);
             // 解析自定义 EQ 设置响应（0x8418）
             this.handleEqSetDetailResponse(valueArray);
+            // 解析音量响应（0x8130）
+            this.handleVolumeValue(valueArray);
+            // 解析音量设置响应（0x8427）
+            this.handleVolumeSetResp(valueArray);
           });
         } catch (readErr) {
           let error = readErr as BusinessError;
@@ -1398,7 +1451,10 @@ export class OppoEarphoneManager {
         this.startHeartbeat();
 
         // 连接成功后启动 5 阶段初始化（参考 OppoPods ConnectAsync 流程）
+        const currentInitVer = ++this.initVersion;
         setTimeout(async () => {
+          // 废弃：已被更新的连接取代
+          if (currentInitVer !== this.initVersion) return;
           // 阶段1: 设备识别 — ProductID + 能力位图
           this.sendRawPacket(buildPacket(CmdQueryProductId));
           await this.delay(120);
@@ -1438,6 +1494,10 @@ export class OppoEarphoneManager {
           }
           if (this.deviceCapabilities.multiConnectManageSupported) {
             this.multiDeviceManager.queryPriorityDevice();
+          }
+          // 查询提示音量（仅支持的设备）
+          if (this.deviceCapabilities.hasPromptVolume) {
+            this.queryVolumeValue();
           }
           this.startPeriodicQuery();
         }, 300);
@@ -1979,6 +2039,39 @@ export class OppoEarphoneManager {
     console.info(`[OppoManager] 编解码器: ${name} (id=${result.codec})`);
     if (this.codecCallback) {
       this.codecCallback(result.codec);
+    }
+  }
+
+  /**
+   * 解析音量档位响应（0x8130）
+   */
+  private handleVolumeValue(data: Uint8Array): void {
+    // 仅对 0x8130 响应打印调试（排查初始加载问题）
+    const dataCmd = data.length >= 6 ? (data[4] | (data[5] << 8)) : -1;
+    if (dataCmd === 0x8130) {
+      console.info(`[OppoManager] handleVolumeValue entry, len=${data.length}`);
+      if (data.length >= 11) {
+        console.info(`[OppoManager] volume raw payload: ${toHexStr(data.slice(9, 11))}`);
+      }
+    }
+    const result = ResponseParser.parseVolumeValue(data);
+    if (!result) {
+      return;
+    }
+    this.volumeValue = result.value;
+    console.info(`[OppoManager] 提示音量: ${result.value}`);
+    if (this.volumeCallback) {
+      this.volumeCallback(result.value);
+    }
+  }
+
+  /**
+   * 解析音量设置响应（0x8427）
+   */
+  private handleVolumeSetResp(data: Uint8Array): void {
+    const success = ResponseParser.parseVolumeSetResp(data);
+    if (success) {
+      console.info('[OppoManager] 音量设置成功');
     }
   }
 

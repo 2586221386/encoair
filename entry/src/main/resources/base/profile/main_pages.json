@@ -6,6 +6,7 @@
     "pages/HelpPage",
     "pages/MultiDeviceManagementPage",
     "pages/EqMasterPage",
-    "pages/EqEditorPage"
+    "pages/EqEditorPage",
+    "pages/MoreSettingsPage"
   ]
 }

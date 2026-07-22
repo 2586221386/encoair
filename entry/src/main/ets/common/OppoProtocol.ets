@@ -56,6 +56,10 @@ export const CmdQueryGameSoundResp  = 0x812B; // 游戏音效响应
 export const CmdQueryMultiPriority  = 0x0132; // 多连接优先设备
 export const CmdMultiPriorityResp   = 0x8132; // 多连接优先设备响应
 
+// ============== 命令字：音量查询（0x13xx）==============
+export const CmdQueryVolumeValue    = 0x0130; // 查询音量档位
+export const CmdQueryVolumeValueResp = 0x8130; // 音量档位响应
+
 // ============== 命令字：高级设置（0x4xx）==============
 export const CmdSetFindMode         = 0x0400; // 查找耳机模式
 export const CmdSetKeyFunction      = 0x0402; // 设置按键功能
@@ -69,6 +73,8 @@ export const CmdSetEqResp           = 0x8406; // EQ 设置响应
 export const CmdSetRelatedDevice    = 0x0408; // 关联设备信息
 export const CmdSetEqDetail         = 0x0418; // 设置详细 EQ（自定义频段）
 export const CmdSetEqDetailResp     = 0x8418; // 详细 EQ 响应
+export const CmdSetVolumeValue      = 0x0427; // 设置音量档位
+export const CmdSetVolumeValueResp  = 0x8427; // 音量设置响应
 export const CmdSetGameStatus       = 0x0420; // 游戏模式状态（独立命令）
 export const CmdSpatialAudio        = 0x0422; // 空间音频三模式（Off/Fixed/Track）
 export const CmdSpatialAudioResp    = 0x8422; // 空间音频 SET 响应

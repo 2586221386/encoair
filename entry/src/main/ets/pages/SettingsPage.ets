@@ -7,6 +7,7 @@ import { preferences } from '@kit.ArkData';
 import { image } from '@kit.ImageKit';
 import { formProvider } from '@kit.FormKit';
 import { notificationManager } from '@kit.NotificationKit';
+import { commentManager } from '@kit.AppGalleryKit';
 import router from '@ohos.router';
 import { cardBg, textPrimary, textSecondary, textTertiary, textMuted, descTextColor, tipTextColor, textHint, hexTextColor, btnInactiveBg, accentPrimary, accentGreen } from '../common/AppTheme';
 import { CapabilityOverrides, CAP_OVERRIDE_AUTO, CAP_OVERRIDE_FORCE_ENABLED, CAP_OVERRIDE_FORCE_DISABLED } from '../common/DeviceCapabilities';
@@ -30,6 +31,21 @@ export struct SettingsPage {
   @State keepBackgroundActive: boolean = false;
   /** Toggle 强制重绘计数器（取消时递增以触发 UI 回退） */
   @State toggleRevertFlag: number = 0;
+  // 音量
+  @State volumeValue: number = -1;
+  private volumeMin: number = 0;
+  private volumeMax: number = 10;
+
+  /** 从设备能力加载音量范围 */
+  private loadVolumeRange(): void {
+    if (this.manager.getIsConnected()) {
+      const caps = this.manager.getDeviceCapabilities();
+      if (caps.hasPromptVolume) {
+        this.volumeMin = caps.promptVolumeMin;
+        this.volumeMax = caps.promptVolumeMax;
+      }
+    }
+  }
   // HEX 数据展开/收起（设置页独立控制）
   @State showRawHex: boolean = false;
   // 设备能力覆写
@@ -37,6 +53,7 @@ export struct SettingsPage {
   @State spatialSoundOverride: number = CAP_OVERRIDE_AUTO;
   @State legacyAncOverride: number = CAP_OVERRIDE_AUTO;
   @State adaptiveAncOverride: number = CAP_OVERRIDE_AUTO;
+  @State advancedSettingsExpanded: boolean = false;
 
   // 主题设置
   @State followSystemTheme: boolean = true;
@@ -56,6 +73,16 @@ export struct SettingsPage {
     this.loadThemeSettings();
     // 加载能力覆写设置
     this.loadOverrideSettings();
+    // 注册音量回调
+    this.manager.setVolumeCallback((value: number) => {
+      this.volumeValue = value;
+    });
+    // 从设备能力加载音量范围
+    this.loadVolumeRange();
+    // 已连接时查询当前音量
+    if (this.manager.getIsConnected()) {
+      this.manager.queryVolumeValue();
+    }
   }
 
   /**
@@ -387,6 +414,39 @@ export struct SettingsPage {
   }
 
   /**
+   * 打开应用评分弹窗
+   */
+  private showAppComment(): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      commentManager.showCommentDialog(context).then(() => {
+        console.info('[Settings] 应用评分弹窗已显示');
+      }).catch((error: BusinessError) => {
+        console.warn(`[Settings] 显示评分弹窗失败: ${error.code}, ${error.message}`);
+        if (error.code === 1021500007 || error.code === 1021500009) {
+          this.showCommentToast('您已经评价过，感谢支持！');
+        } else if (error.code === 1021500006) {
+          this.showCommentToast('请先登录华为账号后再评论');
+        } else {
+          this.showCommentToast('暂无法打开评论，请稍后再试');
+        }
+      });
+    } catch (error) {
+      let err = error as BusinessError;
+      console.warn(`[Settings] 调用评分服务异常: ${err.code}, ${err.message}`);
+    }
+  }
+
+  /** 显示评论反馈提示 */
+  @State commentToastMessage: string = '';
+  private showCommentToast(msg: string): void {
+    this.commentToastMessage = msg;
+    setTimeout(() => {
+      this.commentToastMessage = '';
+    }, 3000);
+  }
+
+  /**
    * 重置弹窗背景为默认
    */
   private resetPopupBackground(): void {
@@ -695,6 +755,50 @@ export struct SettingsPage {
         .alignItems(HorizontalAlign.Center)
         .padding({ bottom: 16 })
 
+        // ====== 应用评论 ======
+        Column() {
+          Row() {
+            Text('⭐')
+              .fontSize(18)
+            Text(' 应用评论')
+              .fontSize(14)
+              .fontColor(textSecondary(this.isDarkMode))
+              .margin({ left: 6 })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+
+          Text('如果您喜欢这款应用，请在应用市场给我们评分或写评论，感谢您的支持！')
+            .fontSize(12)
+            .fontColor(descTextColor(this.isDarkMode))
+            .width('85%')
+            .margin({ bottom: 12 })
+
+          Button('去评分')
+            .fontSize(14)
+            .fontColor('#FFFFFF')
+            .width('85%')
+            .height(40)
+            .backgroundColor(accentPrimary)
+            .borderRadius(24)
+            .onClick(() => {
+              this.showAppComment();
+            })
+
+          if (this.commentToastMessage) {
+            Text(this.commentToastMessage)
+              .fontSize(12)
+              .fontColor(accentGreen)
+              .margin({ top: 8 })
+          }
+        }
+        .width('85%')
+        .borderRadius(20)
+        .backgroundColor(cardBg(this.isDarkMode))
+        .margin({ top: 28 })
+        .alignItems(HorizontalAlign.Center)
+        .padding({ bottom: 16 })
+
         // ====== HEX 原始数据 ======
         Column() {
           // 标题行，可点击展开/收起
@@ -745,91 +849,102 @@ export struct SettingsPage {
               .fontSize(14)
               .fontColor(textSecondary(this.isDarkMode))
               .margin({ left: 6 })
+
+            Blank()
+
+            Text(this.advancedSettingsExpanded ? '⌄' : '›')
+              .fontSize(18)
+              .fontColor(textTertiary(this.isDarkMode))
           }
           .width('100%')
           .padding({ left: 16, right: 16, top: 12, bottom: 4 })
+          .onClick(() => {
+            this.advancedSettingsExpanded = !this.advancedSettingsExpanded;
+          })
 
-          Text('设备能力覆写（支持非标准/未知型号时手动调整）')
-            .fontSize(11)
-            .fontColor(tipTextColor(this.isDarkMode))
-            .width('85%')
-            .margin({ bottom: 8 })
-
-          // 空间音效协议覆写
-          Row() {
-            Text('空间音效协议')
-              .fontSize(13)
-              .fontColor(textSecondary(this.isDarkMode))
-              .layoutWeight(1)
-            Text(this.getOverrideLabel(this.spatialSoundOverride))
-              .fontSize(12)
-              .fontColor(textTertiary(this.isDarkMode))
-              .onClick(() => {
-                this.spatialSoundOverride = this.cycleOverride(this.spatialSoundOverride);
-                this.applyOverrides();
-              })
-          }
-          .width('85%')
-          .height(40)
-
-          // 空间音频协议覆写
-          Row() {
-            Text('空间音频(三模式)')
-              .fontSize(13)
-              .fontColor(textSecondary(this.isDarkMode))
-              .layoutWeight(1)
-            Text(this.getOverrideLabel(this.spatialAudioOverride))
-              .fontSize(12)
-              .fontColor(textTertiary(this.isDarkMode))
-              .onClick(() => {
-                this.spatialAudioOverride = this.cycleOverride(this.spatialAudioOverride);
-                this.applyOverrides();
-              })
-          }
-          .width('85%')
-          .height(40)
-
-          // 旧版 ANC 指令覆写
-          Row() {
-            Text('旧版 ANC 兼容')
-              .fontSize(13)
-              .fontColor(textSecondary(this.isDarkMode))
-              .layoutWeight(1)
-            Text(this.getOverrideLabel(this.legacyAncOverride))
-              .fontSize(12)
-              .fontColor(textTertiary(this.isDarkMode))
-              .onClick(() => {
-                this.legacyAncOverride = this.cycleOverride(this.legacyAncOverride);
-                this.applyOverrides();
-              })
-          }
-          .width('85%')
-          .height(40)
-
-          // 自适应降噪覆写
-          Row() {
-            Text('自适应降噪')
-              .fontSize(13)
-              .fontColor(textSecondary(this.isDarkMode))
-              .layoutWeight(1)
-            Text(this.getOverrideLabel(this.adaptiveAncOverride))
-              .fontSize(12)
-              .fontColor(textTertiary(this.isDarkMode))
-              .onClick(() => {
-                this.adaptiveAncOverride = this.cycleOverride(this.adaptiveAncOverride);
-                this.applyOverrides();
-              })
-          }
-          .width('85%')
-          .height(40)
-          .margin({ bottom: 12 })
-
-          if (this.capabilityMessage) {
-            Text(this.capabilityMessage)
+          if (this.advancedSettingsExpanded) {
+            Text('设备能力覆写（支持非标准/未知型号时手动调整）')
               .fontSize(11)
-              .fontColor(accentGreen)
+              .fontColor(tipTextColor(this.isDarkMode))
               .width('85%')
               .margin({ bottom: 8 })
+
+            // 空间音效协议覆写
+            Row() {
+              Text('空间音效协议')
+                .fontSize(13)
+                .fontColor(textSecondary(this.isDarkMode))
+                .layoutWeight(1)
+              Text(this.getOverrideLabel(this.spatialSoundOverride))
+                .fontSize(12)
+                .fontColor(textTertiary(this.isDarkMode))
+                .onClick(() => {
+                  this.spatialSoundOverride = this.cycleOverride(this.spatialSoundOverride);
+                  this.applyOverrides();
+                })
+            }
+            .width('85%')
+            .height(40)
+
+            // 空间音频协议覆写
+            Row() {
+              Text('空间音频(三模式)')
+                .fontSize(13)
+                .fontColor(textSecondary(this.isDarkMode))
+                .layoutWeight(1)
+              Text(this.getOverrideLabel(this.spatialAudioOverride))
+                .fontSize(12)
+                .fontColor(textTertiary(this.isDarkMode))
+                .onClick(() => {
+                  this.spatialAudioOverride = this.cycleOverride(this.spatialAudioOverride);
+                  this.applyOverrides();
+                })
+            }
+            .width('85%')
+            .height(40)
+
+            // 旧版 ANC 指令覆写
+            Row() {
+              Text('旧版 ANC 兼容')
+                .fontSize(13)
+                .fontColor(textSecondary(this.isDarkMode))
+                .layoutWeight(1)
+              Text(this.getOverrideLabel(this.legacyAncOverride))
+                .fontSize(12)
+                .fontColor(textTertiary(this.isDarkMode))
+                .onClick(() => {
+                  this.legacyAncOverride = this.cycleOverride(this.legacyAncOverride);
+                  this.applyOverrides();
+                })
+            }
+            .width('85%')
+            .height(40)
+
+            // 自适应降噪覆写
+            Row() {
+              Text('自适应降噪')
+                .fontSize(13)
+                .fontColor(textSecondary(this.isDarkMode))
+                .layoutWeight(1)
+              Text(this.getOverrideLabel(this.adaptiveAncOverride))
+                .fontSize(12)
+                .fontColor(textTertiary(this.isDarkMode))
+                .onClick(() => {
+                  this.adaptiveAncOverride = this.cycleOverride(this.adaptiveAncOverride);
+                  this.applyOverrides();
+                })
+            }
+            .width('85%')
+            .height(40)
+            .margin({ bottom: 12 })
+
+            if (this.capabilityMessage) {
+              Text(this.capabilityMessage)
+                .fontSize(11)
+                .fontColor(accentGreen)
+                .width('85%')
+                .margin({ bottom: 8 })
+            }
           }
         }
         .width('85%')

@@ -88,6 +88,9 @@ export class DeviceCapabilities {
   hasDiagnostic: boolean = false;
   hasAutoFirmwareUpdate: boolean = false;
   hasFitDetection: boolean = false;
+  hasPromptVolume: boolean = false;
+  promptVolumeMin: number = 0;
+  promptVolumeMax: number = 10;
 
   // ========== ANC 配置 ==========
   /** protocolIndex → UI 模式名 */
@@ -257,6 +260,11 @@ function applyDeviceEntry(caps: DeviceCapabilities, entry: DeviceModelEntry): vo
   caps.hasDiagnostic = func.diagnostic ?? false;
   caps.hasAutoFirmwareUpdate = func.autoFirmwareUpdate ?? false;
   caps.hasFitDetection = func.fitDetection ?? false;
+  caps.hasPromptVolume = func.promptVolume ?? false;
+  if (func.promptVolumeRange && func.promptVolumeRange.length >= 2) {
+    caps.promptVolumeMin = func.promptVolumeRange[0];
+    caps.promptVolumeMax = func.promptVolumeRange[1];
+  }
 
   // 自定义 EQ 频率
   if (func.customEqFrequency) {
